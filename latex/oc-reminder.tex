@@ -1118,14 +1118,19 @@ The HJB equation derived in Step 7,
     -\frac{\partial \phi}{\partial t}(t, x) + H(t, x, \nabla_x \phi(t, x)) = 0, \qquad \phi(T, x) = G(x),
 \end{equation}
 
+\begin{tldrbox}
 is a first-order PDE defined over the $(n+1)$-dimensional domain $[0,T] \times \mathbb{R}^n$. To solve it numerically in the classical way, one discretizes this domain with a grid of $N$ points per spatial dimension, producing a grid of total size $N^n$ in the state space alone. For $n = 2$ and $N = 100$, this is $10^4$ points --- entirely manageable. For $n = 6$ and $N = 100$, this is $10^{12}$ points --- already beyond the memory of any existing computer. For $n = 20$, the number $N^{20}$ is astronomically large regardless of $N$. This exponential growth of computational cost with state dimension is the \textbf{curse of dimensionality}, a term coined by Bellman himself when he recognized that dynamic programming, despite its conceptual elegance, was computationally intractable for high-dimensional systems.
 
+\begin{compnumissuesbox}
 It is important to be precise about what \textit{kind} of exponential this is, and how it differs from the exponential that afflicts PMP. The PMP shooting problem becomes exponentially ill-conditioned as the \textit{time horizon} $T$ grows, through the Lyapunov exponent mechanism described in Step 6. The HJB grid discretization becomes exponentially costly as the \textit{state dimension} $n$ grows, through the volume of the grid. These are independent exponentials in different variables. A problem with short horizon and high state dimension would suffer from HJB's curse but not PMP's; a problem with long horizon and low state dimension would suffer from PMP's conditioning but not HJB's grid cost. The regime the paper targets --- high-dimensional state space \textit{and} long horizon --- is where \textit{both} classical approaches fail simultaneously. This is the precise gap the paper fills.
+\end{compnumissuesbox}
+\end{tldrbox}
 
 \medskip\hrule\medskip
 
 \subsubsection{The Cost Decomposition: Memory, Computation, and Time}
 
+\begin{compnumissuesbox}
 To make the curse concrete, consider three separate costs that each scale as $N^n$.
 
 \textbf{Memory cost.} Storing the value function $\phi(t, x)$ on the grid requires one floating-point number per grid point per time step. With $N^n$ spatial points and $N_t$ time steps, total storage is $N_t \cdot N^n$ numbers. At 8 bytes per double-precision float, storing a grid for $n = 10$, $N = 10$, $N_t = 100$ requires $100 \times 10^{10} \times 8 \approx 8 \times 10^{12}$ bytes --- 8 terabytes.
@@ -1135,6 +1140,7 @@ To make the curse concrete, consider three separate costs that each scale as $N^
 \textbf{Interpolation cost.} Recovering the optimal control at a state $x$ that does not lie exactly on a grid point requires $n$-linear interpolation, which costs $O(2^n)$ operations --- itself exponential in $n$.
 
 All three costs share the same fundamental structure: they grow exponentially with $n$ regardless of any other problem parameter.
+\end{compnumissuesbox}
 
 \medskip\hrule\medskip
 
@@ -1260,11 +1266,13 @@ Code not shown for brevity
 
 \subsubsection{What the Code Shows}
 
+\begin{compnumissuesbox}
 Running the above produces a table and two plots that make the curse of dimensionality visible as a physical phenomenon rather than an abstract asymptotic statement.
 
 For $n = 2$ with $N = 20$, the grid has $400$ points and the computation takes milliseconds --- this is the textbook regime where HJB is tractable and widely used in robotics and control engineering. For $n = 6$ with $N = 6$, the grid already has $46{,}656$ points and the coarseness of the grid ($N=6$ points per dimension) means the value function is barely resolved --- yet even this crude discretization begins to strain memory. For $n = 10$ with $N = 3$, the grid has $3^{10} = 59{,}049$ points but each dimension has only 3 points, making the approximation essentially useless. A meaningful discretization with $N = 20$ for $n = 10$ would require $20^{10} \approx 10^{13}$ points, or roughly 80 terabytes of memory.
 
 The timing plot shows the computation time growing exponentially on a log scale --- a straight line on the semilog axes --- confirming the theoretical $O(N^n)$ scaling. The slope of the line is $\log N$ per unit of $n$, consistent with the grid volume formula.
+\end{compnumissuesbox}
 
 \medskip\hrule\medskip
 
@@ -1287,6 +1295,7 @@ The next part develops the PMP--HJB bridge and shows how this identity can be co
 
 \subsubsection{The Legendre--Fenchel Viewpoint}
 
+\begin{mathrequirementsbox}
 The function $H(t, x, p)$ defined in \eqref{eq:H_def} is not just a notational
 convenience --- it has deep structure inherited from convex analysis. To see this,
 fix $(t, x)$ and think of $H$ as a function of $p$ alone:
@@ -1327,6 +1336,7 @@ The construction \eqref{eq:H_def} is the direct generalization: $p$ plays the ro
 of the canonical momentum, $f(t,x,u)$ plays the role of $\dot{q}$, and the
 supremum over $u$ plays the role of the Legendre transform. The analogy is
 exact when the control $u$ is unconstrained and $L$ is strictly convex in $u$.
+\end{mathrequirementsbox}
 
 \medskip\hrule\medskip
 
@@ -1508,15 +1518,15 @@ $u^\star(t)$ produced by PMP agrees with the feedback law evaluated along
 $z_x^\star(t)$:
 
 \begin{equation}
-    u^\star_{\text{PMP}}(t) = u^\star_{\text{HJB}}(t, z_x^\star(t))
-    = \arg\sup_{u \in U}\,
-    \mathcal{H}(t, z_x^\star(t), \nabla_x\phi(t, z_x^\star(t)), u).
+    u^\star_{\text{PMP}}(t) = \arg\sup_{u \in U}\,
+    \mathcal{H}(t, z_x^\star(t), \nabla_x\phi(t, z_x^\star(t)), u) = u^\star_{\text{HJB}}(t, z_x^\star(t))
 \end{equation}
 
 The precise PMP--HJB identity that underpins this agreement is proved in Part III.
 
-\section{Part III --- The PMP--HJB Bridge}
+\pagebreak
 
+\section{Part III --- The PMP--HJB Bridge}
 
 \subsection{Step 12: The PMP--HJB Bridge via the Method of Characteristics}
 

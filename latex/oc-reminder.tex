@@ -1278,38 +1278,14 @@ At this point in the document we have established the following precise picture.
 
 \textbf{Neither approach dominates the other.} They trade one exponential for another in different variables. For the high-dimensional, long-horizon problems the paper targets, both fail simultaneously and for different reasons.
 
-The resolution the paper proposes has three ingredients working together. A \textbf{neural network} approximates $\phi_\theta(t, x)$, sidestepping the grid entirely and making the representation cost $O(\text{parameters})$ independent of $n$. The \textbf{PMP--HJB bridge} $p_x = \nabla_x \phi_\theta$ connects the costate to the value function gradient, enabling trajectory generation without solving a BVP. \textbf{Implicit deep learning with JFB} handles the $\sup_u \mathcal{H}$ via Newton's method even when no closed form for $u^\star$ exists, enabling the method to work for implicit Hamiltonians that neither PMP nor classical HJB could handle computationally. It is the combination of all three that constitutes the paper's contribution, not any single ingredient in isolation.
-
-The next step introduces the neural network parameterization of $\phi$ and explains precisely why previous neural network approaches still required explicit Hamiltonians, setting up the paper's specific technical contribution.
+The next part develops the PMP--HJB bridge and shows how this identity can be combined with implicit solves and neural parameterization.
 
 
-\subsection{Step 9: The HJB Equation and Its Hamiltonian Form}
+\subsection{Step 9: The Optimized Hamiltonian, Feedback Law, and the Explicit-Hamiltonian Bottleneck}
 
 \medskip\hrule\medskip
 
-\subsubsection{From Bellman to a PDE: Completing the Derivation}
-
-In Step 7 we derived the HJB equation from Bellman's principle by taking $\delta t \to 0$.
-We arrived at:
-
-\begin{equation}
-    -\frac{\partial \phi}{\partial t}(t, x) = \inf_{u \in U}
-    \left\{ L(t, x, u) + \left\langle \nabla_x \phi(t, x),\,
-    f(t, x, u) \right\rangle \right\}, \qquad \phi(T, x) = G(x).
-    \label{eq:hjb_inf}
-\end{equation}
-
-This is correct but not yet in the compact Hamiltonian form used throughout the
-paper. In this step we perform the remaining algebraic step --- defining the
-optimized Hamiltonian $H$ by executing the $\inf_u$ --- and arrive at the form
-the paper works with. We also establish the precise relationship between $H$ and
-the control Hamiltonian $\mathcal{H}$ from Part I, which will be the key to the
-PMP--HJB bridge in Step 12.
-
-\medskip\hrule\medskip
-
-
-\subsubsection{The Legendre--Fenchel Connection}
+\subsubsection{The Legendre--Fenchel Viewpoint}
 
 The function $H(t, x, p)$ defined in \eqref{eq:H_def} is not just a notational
 convenience --- it has deep structure inherited from convex analysis. To see this,
@@ -1318,6 +1294,7 @@ fix $(t, x)$ and think of $H$ as a function of $p$ alone:
 \begin{equation}
     H(t, x, p) = \sup_{u \in U} \left[ -\langle p, f(t,x,u) \rangle
     - L(t,x,u) \right].
+    \label{eq:H_def}
 \end{equation}
 
 This is a \textbf{supremum of affine functions} of $p$ (each $u$ contributes the
@@ -1353,59 +1330,38 @@ exact when the control $u$ is unconstrained and $L$ is strictly convex in $u$.
 
 \medskip\hrule\medskip
 
-\subsubsection{The Optimal Feedback Control from HJB}
+\subsubsection{Feedback Law and the Explicit-Hamiltonian Bottleneck}
 
 Once $\phi$ is known, the optimal feedback control is recovered by:
 
 \begin{equation}
     u^\star(t, x) = \arg\sup_{u \in U}\,
     \mathcal{H}(t, x, \nabla_x \phi(t, x), u).
-    \label{eq:ustar_hjb}
+    \label{eq:feedback_law}
 \end{equation}
 
 This is the central formula connecting the value function to the control policy.
 Its structure deserves careful reading. 
 
-The formula \eqref{eq:ustar_hjb} defines a \textbf{true feedback law}: a map
+The formula \eqref{eq:feedback_law} defines a \textbf{true feedback law}: a map
 $(t, x) \mapsto u^\star$ that can be evaluated at any state at any time without
 solving any BVP, without knowing the initial condition, and without simulating
 any trajectory. This is the fundamental advantage of the value function approach.
 
-However, evaluating \eqref{eq:ustar_hjb} requires performing the $\arg\sup$ ---
-the same optimization that appears inside the HJB PDE. In the explicit case
-(Step 5), this has a closed form. In the implicit case, it does not. This
-observation is the precise statement of why the implicit Hamiltonian problem
-afflicts both PMP and HJB equally: \textbf{both frameworks require evaluating
-$\arg\sup_u \mathcal{H}$ to extract the optimal control from whatever
-representation of the solution they produce}. The paper's implicit solve addresses
-both simultaneously.
+However, evaluating \eqref{eq:feedback_law} requires solving an $\arg\sup$ over
+$u$. In the explicit case this optimization has a usable closed form. In the
+implicit case it does not, and each control evaluation requires a numerical
+inner solve. This is the precise explicit-Hamiltonian bottleneck.
 
-\medskip\hrule\medskip
-
-\subsubsection{Why Classical HJB Requires Explicit Hamiltonians}
-
-To evaluate the right-hand side of the HJB equation \eqref{eq:hjb_H} at a grid
-point $(t, x)$, one needs the value $H(t, x, \nabla_x \phi(t,x))$. Computing
-this requires solving:
-
+The same bottleneck appears inside classical grid-based HJB. At each grid point
+and time step, one must evaluate
 \begin{equation}
     H(t, x, p) = \sup_{u \in U} \left[ -\langle p, f(t,x,u)\rangle
-    - L(t,x,u) \right]
+    - L(t,x,u) \right],
 \end{equation}
-
-at every grid point, at every time step. For an explicit Hamiltonian, this
-$\sup$ has a closed form and is evaluated in $O(1)$ operations. For an implicit
-Hamiltonian, this $\sup$ requires an inner iterative solve (Newton's method or
-similar) at every grid point at every time step --- multiplying the already
-intractable $O(N^n)$ cost by the cost of the inner solve at each point.
-
-In the classical grid-based setting, this additional cost is merely an
-inconvenience on top of an already intractable computation. But in the neural
-network setting of Part IV, where the grid is replaced by a compact
-parameterization $\phi_\theta$ and trajectory sampling replaces grid evaluation,
-the inner solve becomes the \textit{only} remaining bottleneck --- and handling
-it efficiently via \textbf{Jacobian-Free Backpropagation} is the paper's central
-computational contribution.
+and without a closed form this becomes an additional iterative computation at
+every point. Thus classical HJB is constrained not by the existence of $H$, but
+by the repeated lack of a cheap closed-form evaluation of the optimizing control.
 
 \medskip\hrule\medskip
 
@@ -1419,21 +1375,18 @@ The Hamilton-Jacobi-Bellman equation in Hamiltonian form is:
     + H(t, x, \nabla_x \phi(t, x)) = 0,
     \qquad \phi(T, x) = G(x),
     }
+    \label{eq:hjb_H}
 \end{equation}
 
 where $H(t,x,p) = \sup_{u \in U} \mathcal{H}(t,x,p,u)$ is the optimized
 Hamiltonian, convex in $p$ for all $(t,x)$. Its solution $\phi(t,x)$ is the
 value function encoding the optimal cost-to-go from every state simultaneously.
 The optimal feedback control is $u^\star(t,x) = \arg\sup_{u \in U}
-\mathcal{H}(t, x, \nabla_x\phi(t,x), u)$. The characteristics of this PDE are
-the PMP optimal trajectories, establishing the geometric equivalence of the two
-frameworks --- a connection we make algebraically rigorous in Steps 12 and 13.
+\mathcal{H}(t, x, \nabla_x\phi(t,x), u)$. The geometric equivalence with PMP is
+developed rigorously in Part III.
 
 
 
-Here is Step 10 directly pastable into Overleaf:
-
-```latex
 \subsection{Step 10: The Optimal Feedback Control from the Value Function}
 
 \medskip\hrule\medskip
@@ -1441,10 +1394,7 @@ Here is Step 10 directly pastable into Overleaf:
 \subsubsection{From PDE Solution to Control Policy}
 
 Step 9 established the HJB equation and its solution $\phi(t,x)$. We now address
-the question of how to extract the optimal control policy from $\phi$. This step
-is conceptually simple but computationally where everything hinges: the formula
-is clean, but evaluating it requires the same $\arg\sup_u \mathcal{H}$ that
-has been the central difficulty throughout.
+the direct policy extraction map $(t,x) \mapsto u^\star(t,x)$.
 
 Suppose $\phi$ is known and $C^1$. At any state $x$ at time $t$, the optimal
 feedback control is:
@@ -1455,43 +1405,12 @@ feedback control is:
     = \arg\sup_{u \in U}
     \left[ -\langle \nabla_x \phi(t,x),\, f(t,x,u) \rangle
     - L(t,x,u) \right].
-    \label{eq:feedback_law}
 \end{equation}
 
 This is the complete feedback law. It maps any $(t,x)$ to the optimal action
-by: computing the gradient $\nabla_x\phi(t,x)$, substituting it as the costate
-$p_x$, and maximizing $\mathcal{H}$ over $u$. The result is a \textbf{closed-loop
-policy} --- a function of the current state rather than of time alone --- which
-is robust to perturbations and model errors in a way that open-loop PMP
-trajectories are not.
-
-\medskip\hrule\medskip
-
-\subsubsection{The Gradient of the Value Function as the Costate}
-
-The substitution $p_x = \nabla_x \phi(t,x)$ in \eqref{eq:feedback_law} is not
-an approximation or a heuristic --- it is an exact identity, which we will prove
-formally in Step 12. For now, let us understand it intuitively.
-
-The value function $\phi(t,x)$ measures the optimal cost achievable from state
-$x$ at time $t$. Its gradient $\nabla_x \phi(t,x)$ measures how sensitive this
-optimal cost is to a small perturbation in the current state: if the system is
-nudged from $x$ to $x + \delta x$, the optimal cost changes by approximately
-$\langle \nabla_x \phi(t,x), \delta x \rangle$. This sensitivity --- the
-\textbf{marginal cost of state} --- is precisely what the costate $p_x$ measures
-in the PMP framework. Recall from Step 2 that $p_x(t)$ emerged as the Lagrange
-multiplier enforcing the dynamics constraint, measuring how much the optimal cost
-changes when the dynamics are perturbed at time $t$. Both objects measure the
-same thing: the first-order sensitivity of the optimal cost to a state
-perturbation. Their equality is therefore not surprising --- it is the same
-physical quantity described from two different mathematical perspectives.
-
-This identification has a direct analogue in classical mechanics. Hamilton's
-principal function $S(q,t)$ satisfies $\partial S / \partial q = p$, where $p$
-is the canonical momentum. The value function $\phi$ is the optimal control
-analogue of $S$, and $\nabla_x \phi = p_x$ is the analogue of $\partial S /
-\partial q = p$. The HJB equation is the analogue of the Hamilton-Jacobi equation.
-The entire structure is the same.
+by computing $\nabla_x\phi(t,x)$ and maximizing $\mathcal{H}$ over $u$. The
+result is a \textbf{closed-loop policy} and is robust to state perturbations in
+a way precomputed open-loop controls are not.
 
 \medskip\hrule\medskip
 
@@ -1594,37 +1513,7 @@ $z_x^\star(t)$:
     \mathcal{H}(t, z_x^\star(t), \nabla_x\phi(t, z_x^\star(t)), u).
 \end{equation}
 
-This equality holds because $p_x^\star(t) = \nabla_x\phi(t, z_x^\star(t))$ along
-the optimal trajectory --- the identity we prove in Step 12.
-
-\medskip\hrule\medskip
-
-\subsubsection{Why This Step Is the Pivot of the Entire Document}
-
-Every piece of mathematics developed so far --- the augmented action, the
-variational derivation, PMP, Bellman's principle, the HJB PDE, the optimized
-Hamiltonian --- converges on the single formula \eqref{eq:feedback_law}. It is
-the answer to the optimal control problem in its most useful form: a feedback
-law that can be evaluated at any state instantly, once $\phi$ is known.
-
-The entire challenge of computational optimal control is therefore reducible to
-a single question: \textbf{how do you represent and compute $\phi(t,x)$
-efficiently for high-dimensional $x$?}
-
-Classical grid-based methods answer this with a lookup table, which fails for
-$n \gtrsim 6$ as shown in Step 8. The paper answers this with a neural network
-$\phi_\theta(t,x)$, which represents $\phi$ as a smooth parametric function
-whose evaluation cost is $O(\text{parameters})$ regardless of $n$. The gradient
-$\nabla_x \phi_\theta(t,x)$ is then obtained by automatic differentiation through
-the network --- a computation that costs the same as a forward pass. The
-$\arg\sup_u \mathcal{H}$ is handled by Newton's method when no closed form
-exists. And the network is trained by minimizing the HJB residual along sampled
-trajectories, with \textbf{Jacobian-Free Backpropagation} handling the temporal
-coupling that makes this training tractable.
-
-This is the complete logical chain from problem statement to the paper's method.
-Steps 11 through 18 build each piece of this chain rigorously.
-
+The precise PMP--HJB identity that underpins this agreement is proved in Part III.
 
 \section{Part III --- The PMP--HJB Bridge}
 
@@ -1747,93 +1636,53 @@ same set of curves.
 
 \subsubsection{Deriving the Identity $p_x = \nabla_x \phi$}
 
-We now prove the central identity formally. Let $(z_x^\star(t), u^\star(t))$ be
-an optimal pair for the problem with initial condition $z_x^\star(0) = x$, and
-let $p_x^\star(t)$ be the corresponding PMP costate satisfying equations (3) and
-(4) with transversality condition $p_x^\star(T) = \nabla G(z_x^\star(T))$.
-Assume $\phi$ is $C^2$ in a neighborhood of the optimal trajectory.
+Let $(z_x^\star(t), u^\star(t))$ be an optimal trajectory-control pair, and let
+$p_x^\star(t)$ be the associated PMP costate with terminal condition
+$p_x^\star(T) = \nabla G(z_x^\star(T))$. Assume $\phi$ is smooth on a
+neighborhood of this trajectory.
 
 \medskip
 
-\noindent\textbf{Proposition.} \textit{Under the above assumptions,}
+\noindent\textbf{Proposition.} \textit{For all } $t \in [0,T]$,
 \begin{equation}
-    p_x^\star(t) = \nabla_x \phi(t, z_x^\star(t))
-    \quad \text{for all } t \in [0,T].
+    p_x^\star(t) = \nabla_x \phi(t, z_x^\star(t)).
     \label{eq:bridge}
 \end{equation}
 
 \medskip
 
-\noindent\textbf{Proof.} Define the residual vector:
+\noindent\textbf{Proof.}
+\begin{enumerate}
+    \item Define two candidate costates along the same optimal state trajectory:
+    \[
+    q_1(t) := p_x^\star(t), \qquad
+    q_2(t) := \nabla_x \phi(t, z_x^\star(t)).
+    \]
 
-\begin{equation}
-    r(t) = p_x^\star(t) - \nabla_x \phi(t, z_x^\star(t)).
-\end{equation}
+    \item From the characteristic system of the HJB PDE, $q_2$ satisfies
+    \[
+    \dot{q}_2(t) = -\nabla_x H\!\left(t, z_x^\star(t), q_2(t)\right).
+    \]
 
-We show $r(t) = 0$ for all $t$ by showing it satisfies a homogeneous linear ODE
-with zero terminal condition.
+    \item From PMP and the envelope relation between $H$ and $\mathcal{H}$,
+    $q_1$ satisfies the same ODE:
+    \[
+    \dot{q}_1(t) = -\nabla_x H\!\left(t, z_x^\star(t), q_1(t)\right).
+    \]
 
-\textbf{Terminal condition.} At $t = T$, the PMP transversality condition gives
-$p_x^\star(T) = \nabla G(z_x^\star(T))$. The HJB terminal condition gives
-$\phi(T, x) = G(x)$, so $\nabla_x \phi(T, z_x^\star(T)) = \nabla G(z_x^\star(T))$.
-Therefore $r(T) = 0$.
+    \item At terminal time, both satisfy the same boundary value:
+    \[
+    q_1(T) = p_x^\star(T) = \nabla G(z_x^\star(T)),
+    \]
+    while from $\phi(T,x)=G(x)$,
+    \[
+    q_2(T)=\nabla_x\phi(T,z_x^\star(T))=\nabla G(z_x^\star(T)).
+    \]
 
-\textbf{ODE for $r(t)$.} Differentiate $\nabla_x \phi(t, z_x^\star(t))$ with
-respect to $t$ using the chain rule:
-
-\begin{equation}
-    \frac{d}{dt}\nabla_x \phi(t, z_x^\star(t))
-    = \partial_t \nabla_x \phi + \nabla^2_x \phi \cdot \dot{z}_x^\star.
-    \label{eq:grad_phi_dot}
-\end{equation}
-
-Differentiate the HJB equation $-\phi_t + H(t, x, \nabla_x\phi) = 0$ with
-respect to $x$:
-
-\begin{equation}
-    -\partial_t \nabla_x \phi
-    + \nabla_x H + \nabla^2_x \phi \cdot \nabla_p H = 0
-\end{equation}
-
-\begin{equation}
-    \Longrightarrow \quad
-    \partial_t \nabla_x \phi
-    = \nabla_x H(t, x, \nabla_x\phi)
-    + \nabla^2_x \phi \cdot \nabla_p H(t, x, \nabla_x\phi).
-    \label{eq:dt_grad_phi}
-\end{equation}
-
-Substituting \eqref{eq:dt_grad_phi} and $\dot{z}_x^\star =
--\nabla_p\mathcal{H}|_{u^\star} = \nabla_p H$ into \eqref{eq:grad_phi_dot}:
-
-\begin{equation}
-    \frac{d}{dt}\nabla_x\phi(t, z_x^\star)
-    = \nabla_x H + \nabla^2_x\phi \cdot \nabla_p H
-    + \nabla^2_x\phi \cdot \nabla_p H
-    = \nabla_x H + 2\,\nabla^2_x\phi \cdot \nabla_p H.
-\end{equation}
-
-This does not simplify cleanly without using the characteristic equation
-directly. The cleaner route is to note that along the characteristic,
-$p(t) = \nabla_x\phi(t, x(t))$ is \textit{defined} to hold along the
-characteristic strip, and the characteristic equation \eqref{eq:char_p} gives
-$\dot{p} = -\nabla_x H$. Meanwhile the PMP costate satisfies $\dot{p}_x^\star =
-\nabla_{z_x}\mathcal{H}|_{u^\star} = -\nabla_x H$ by \eqref{eq:char_pmp4}.
-Both $p_x^\star$ and $\nabla_x\phi(t, z_x^\star(t))$ therefore satisfy the
-\textit{same} linear ODE:
-
-\begin{equation}
-    \dot{q}(t) = -\nabla_x H(t, z_x^\star(t), q(t))
-\end{equation}
-
-with the same terminal condition $q(T) = \nabla G(z_x^\star(T))$. By uniqueness
-of solutions to ODEs (Picard--Lindelöf, applicable since $H$ is $C^2$), they
-must be equal for all $t \in [0,T]$:
-
-\begin{equation}
-    p_x^\star(t) = \nabla_x\phi(t, z_x^\star(t)).
-    \qquad \square
-\end{equation}
+    \item Hence $q_1$ and $q_2$ solve the same ODE with the same terminal
+    condition. By uniqueness of ODE solutions (Picard--Lindel\"of),
+    $q_1(t)=q_2(t)$ on $[0,T]$, proving \eqref{eq:bridge}. \hfill $\square$
+\end{enumerate}
 
 \medskip\hrule\medskip
 
@@ -1976,9 +1825,10 @@ $O(mn)$ --- one matrix-vector multiply --- on top of the autodiff cost.
 
 \subsubsection{The Implicit Case: What Breaks}
 
-Now suppose the Hamiltonian is implicit: the condition $\nabla_u \mathcal{H} = 0$
-cannot be solved analytically for $u^\star$. We still have the identity
-$p_x = \nabla_x \phi_\theta$, so the optimality condition becomes:
+Now suppose the Hamiltonian is implicit: the first-order condition
+$\nabla_u \mathcal{H} = 0$ does not yield a usable closed-form expression for
+$u^\star$. We still have the identity $p_x = \nabla_x \phi_\theta$, so the
+optimality condition becomes:
 
 \begin{equation}
     \nabla_u \mathcal{H}(t, z_x, \nabla_x \phi_\theta(t, z_x), u^\star) = 0.
@@ -1986,17 +1836,16 @@ $p_x = \nabla_x \phi_\theta$, so the optimality condition becomes:
 \end{equation}
 
 This is a nonlinear equation in $u^\star \in \mathbb{R}^m$ that must be solved
-at every point $(t, z_x)$ where the control is needed. There is no closed form
-for the solution. The function $g$ does not exist.
+at every point $(t, z_x)$ where the control is needed. The issue is not that
+the Hamiltonian $H$ fails to exist; it does. The issue is that evaluating
+$\arg\sup_u \mathcal{H}$ repeatedly has no closed form and becomes the
+computational bottleneck.
 
-Prior methods that parameterized the value function had no way to proceed from
-\eqref{eq:implicit_condition}: without $g$, they could not evaluate $u^\star$,
-could not integrate the dynamics forward, could not generate training
-trajectories, and could not compute the HJB residual loss. The implicit
-Hamiltonian is therefore not merely an inconvenience --- it is a complete
-computational roadblock for the entire class of value-function methods.
+Prior methods that parameterized the value function depended on explicit
+evaluation of the control map $g$. Without such a map, they could not evaluate
+$u^\star$ cheaply enough inside trajectory rollout and residual evaluation.
 
-Note that the same roadblock appears in the classical grid-based HJB solver:
+The same bottleneck appears in classical grid-based HJB:
 evaluating $H(t, x, \nabla_x\phi)$ at each grid point requires solving
 $\sup_u \mathcal{H}$, which for an implicit Hamiltonian requires an inner
 iterative solve at every grid point at every time step. The neural network

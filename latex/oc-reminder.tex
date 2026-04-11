@@ -201,7 +201,8 @@
 
 \section{Part I --- Pontryagin's Maximum Principle}
 
-\subsection{Step 1: Problem Setup}
+\subsection{Problem Setup}
+\label{sec:problem-setup}
 
 \medskip\hrule\medskip
 
@@ -257,7 +258,10 @@ $$G : \mathbb{R}^n \to \mathbb{R}$$
 
 $G(z_x(T))$ measures how good or bad the final state is. Together they define the \textbf{objective functional}:
 
-$$\min_{u \in U} \int_0^T L(s, z_x, u)\, ds + G(z_x(T))$$
+\begin{equation}
+\min_{u \in U} \int_0^T L(s, z_x, u)\, ds + G(z_x(T))
+\label{eq:ocp-objective}
+\end{equation}
 
 \begin{physicsinsightbox}
 This is a \textbf{functional} — a map from an entire control trajectory $u(\cdot)$ to a single real number. It is the direct analogue of the \textbf{action functional} in classical mechanics:
@@ -282,7 +286,7 @@ The coefficient $\delta J / \delta u(t)$ in this expansion is the \textbf{functi
 
 % Reading off the linear term: $\delta J / \delta u(t) = 2u(t)$. This is simply $2u$ evaluated at time $t$ — it has nothing to do with $du/dt$. The functional derivative is a pointwise operation on the function $u$, not a time derivative.
 
-% This is the mathematical machinery that makes the variational derivation in Step 2 rigorous. When we write $\delta S = 0$ and integrate by parts, we are computing Fréchet derivatives of a constrained functional, not differentiating with respect to $t$.
+% This is the mathematical machinery that makes the variational derivation rigorous. When we write $\delta S = 0$ and integrate by parts, we are computing Fréchet derivatives of a constrained functional, not differentiating with respect to $t$.
 
 To make this concrete, consider the functional
 \[
@@ -340,7 +344,10 @@ $$\min_{u \in U} \int_0^T L(s, z_x, u)\, ds + G(z_x(T))$$
 
 subject to:
 
-$$\dot{z}_x = f(t, z_x, u), \qquad z_x(0) = x, \qquad u(t) \in U \subset \mathbb{R}^m \text{ for all } t$$
+\begin{equation}
+\dot{z}_x = f(t, z_x, u), \qquad z_x(0) = x, \qquad u(t) \in U \subset \mathbb{R}^m \text{ for all } t
+\label{eq:ocp-dynamics}
+\end{equation}
 
 The object $u^\star(\cdot)$ is called the \textbf{optimal open-loop control}. The word \textbf{open-loop} is deliberate and important: $u^\star(t)$ is a function of time alone, pre-computed from the initial condition $x$. It is a fixed schedule of inputs — like a pre-programmed rocket burn sequence — that you execute without looking at the actual state of the system as it evolves. If the real system deviates from the expected trajectory due to noise or model error, an open-loop controller does not react.
 
@@ -359,7 +366,7 @@ We allow $u(t)$ to be any \textbf{measurable} function of time — this is the a
 
 The difficulty of this problem, compared to finite-dimensional optimization, is that the decision variable $u(\cdot)$ lives in an \textbf{infinite-dimensional function space}. You are not choosing a vector of $m$ numbers — you are choosing a function on $[0,T]$, which is an uncountably infinite collection of numbers, one for each instant of time, all coupled together through the dynamics ODE.
 
-Standard calculus and gradient descent operate in $\mathbb{R}^m$. To optimize over function spaces, you need the \textbf{calculus of variations} — the machinery of variations, functional derivatives, and adjoint equations. This is what Step 2 develops. The costate $p_x(t)$ will emerge naturally as the functional derivative of $J$ with respect to a perturbation of the trajectory, and the PMP will be the Euler-Lagrange equations of this constrained variational problem.
+Standard calculus and gradient descent operate in $\mathbb{R}^m$. To optimize over function spaces, you need the \textbf{calculus of variations} — the machinery of variations, functional derivatives, and adjoint equations. This is what the next subsection develops. The costate $p_x(t)$ will emerge naturally as the functional derivative of $J$ with respect to a perturbation of the trajectory, and the PMP will be the Euler-Lagrange equations of this constrained variational problem.
 \end{mathrequirementsbox}
 
 \medskip\hrule\medskip
@@ -373,7 +380,8 @@ To summarize cleanly, we assume throughout Part I: $f$ is $C^1$ in $(t,z_x,u)$ a
 
 \medskip\hrule\medskip
 
-\subsection{Step 2: The Augmented Action --- Physics Style}
+\subsection{The Augmented Action --- Physics Style}
+\label{sec:augmented-action}
 
 \medskip\hrule\medskip
 
@@ -383,7 +391,10 @@ We want to minimize $J[u]$ subject to the constraint $\dot{z}_x = f(t, z_x, u)$ 
 
 The natural generalization of a Lagrange multiplier to this setting is a \textbf{multiplier field}: a time-dependent vector function $p_x(t) \in \mathbb{R}^n$ that enforces the constraint at every $t$ simultaneously. Just as in finite dimensions the Lagrangian $\mathcal{L} = f_0 + \lambda \cdot c$ adds the constraint $c = 0$ weighted by $\lambda$ to the objective $f_0$, here we add the dynamics constraint weighted by $p_x(t)$ and integrated over all time. The result is the \textbf{augmented action}:
 
-$$S[z_x, u, p_x] = \int_0^T \left[ L(t, z_x, u) + \langle p_x(t),\, \dot{z}_x(t) - f(t, z_x, u) \rangle \right] dt + G(z_x(T))$$
+\begin{equation}
+S[z_x, u, p_x] = \int_0^T \left[ L(t, z_x, u) + \langle p_x(t),\, \dot{z}_x(t) - f(t, z_x, u) \rangle \right] dt + G(z_x(T))
+\label{eq:augmented-action}
+\end{equation}
 
 Let us read this carefully. The inner product $\langle p_x(t), \dot{z}_x(t) - f(t, z_x, u)\rangle$ is zero whenever the dynamics constraint is satisfied. So on any trajectory that obeys the dynamics, $S$ reduces to exactly $J[u]$. The multiplier field $p_x(t)$ does not change the value of the functional on feasible trajectories — it only penalizes infeasible ones, and its role is to generate the correct optimality conditions when we vary $S$ freely without explicitly enforcing the constraint. This is precisely the Lagrange multiplier philosophy, lifted to function space.
 
@@ -495,23 +506,32 @@ These correspond to (i) recovery of the dynamics from $\delta p_x$, (ii) the adj
 
 \subsubsection{Recognizing the Hamiltonian}
 
-Now collect the three conditions involving $p_x$ and $z_x$ and observe that they all derive from a single scalar function. Define the \textbf{control Hamiltonian} exactly as in the paper, equation (2):
+Now collect the three conditions involving $p_x$ and $z_x$ and observe that they all derive from a single scalar function. Define the \textbf{control Hamiltonian}:
 \[
 \mathcal{H}(t, z_x, p_x, u) = -\langle p_x,\, f(t, z_x, u)\rangle - L(t, z_x, u).
+\label{eq:control-hamiltonian}
 \]
 
 Note the sign convention carefully: both terms enter with a minus sign. This is the paper's convention and it is consistent with minimization (rather than maximization) of $J$.
 
-At an optimal control $u^\star$, the three PMP relations (3)–(5) can be written in the compact form used in the paper:
-\begin{align*}
-\dot{z}_x(t) &= -\nabla_{p_x}\mathcal{H}\bigl(t, z_x(t), p_x(t), u^\star(t)\bigr), & & z_x(0)=x, \\
-\dot{p}_x(t) &= \nabla_{z_x}\mathcal{H}\bigl(t, z_x(t), p_x(t), u^\star(t)\bigr), & & p_x(T)=\nabla G\bigl(z_x(T)\bigr), \\
-0 &= \nabla_{u}\mathcal{H}\bigl(t, z_x(t), p_x(t), u^\star(t)\bigr), & & \text{(interior optimum)}.
-\end{align*}
+At an optimal control $u^\star$, the PMP relations can be written in compact form:
+\begin{equation}
+\dot{z}_x(t) = -\nabla_{p_x}\mathcal{H}\bigl(t, z_x(t), p_x(t), u^\star(t)\bigr), \qquad z_x(0)=x,
+\label{eq:pmp-state}
+\end{equation}
+\begin{equation}
+\dot{p}_x(t) = \nabla_{z_x}\mathcal{H}\bigl(t, z_x(t), p_x(t), u^\star(t)\bigr), \qquad p_x(T)=\nabla G\bigl(z_x(T)\bigr),
+\label{eq:pmp-costate}
+\end{equation}
+\begin{equation}
+0 = \nabla_{u}\mathcal{H}\bigl(t, z_x(t), p_x(t), u^\star(t)\bigr), \qquad \text{(interior optimum)}.
+\label{eq:pmp-stationarity}
+\end{equation}
 
 The global form of the optimality condition (valid also when $u^\star$ lies on the boundary of $\mathcal{U}$) is
 \[
  u^\star(t) \in \arg\max_{u \in \mathcal{U}}\, \mathcal{H}\bigl(t, z_x(t), p_x(t), u\bigr).
+\label{eq:pmp-max}
 \]
 
 The variational computation has therefore produced, from a single augmented action and a single stationarity demand, all three equations of the paper simultaneously: the state dynamics, the costate dynamics (including transversality), and the optimality condition. The costate $p_x(t)$ emerged not as something postulated but as the natural Lagrange multiplier field enforcing the dynamics constraint — it is the shadow price of the constraint, measuring how much the optimal cost would change if the dynamics were perturbed infinitesimally at time $t$.
@@ -520,14 +540,15 @@ The variational computation has therefore produced, from a single augmented acti
 
 \medskip\hrule\medskip
 
-\subsection{Step 4: The Equivalent Formulation for Mathematicians}
+\subsection{The Equivalent Formulation for Mathematicians}
+\label{sec:pmp-theorem}
 
 \medskip\hrule\medskip
 
 \subsubsection{Why Restate What We Already Have?}
 
 \begin{mathrequirementsbox}
-The variational derivation in Steps 2–3 is physically transparent but epistemologically uncomfortable for a mathematician. It assumes smoothness of the optimal control $u^\star$, it treats $\delta u$ as a free variation everywhere on $[0,T]$ without worrying about the constraint $u \in U$, and it derives only a stationarity condition $\nabla_u \mathcal{H} = 0$ rather than a global maximality condition. For controls that hit the boundary of $U$ — which is generically what happens in interesting problems, bang-bang control being the canonical example — $\nabla_u \mathcal{H} = 0$ is simply wrong as a necessary condition. The true necessary condition is the global statement $u^\star \in \arg\max_{u \in U} \mathcal{H}$, and this requires a completely different proof that does not pass through functional derivatives at all.
+The variational derivation above is physically transparent but epistemologically uncomfortable for a mathematician. It assumes smoothness of the optimal control $u^\star$, it treats $\delta u$ as a free variation everywhere on $[0,T]$ without worrying about the constraint $u \in U$, and it derives only a stationarity condition $\nabla_u \mathcal{H} = 0$ rather than a global maximality condition. For controls that hit the boundary of $U$ — which is generically what happens in interesting problems, bang-bang control being the canonical example — $\nabla_u \mathcal{H} = 0$ is simply wrong as a necessary condition. The true necessary condition is the global statement $u^\star \in \arg\max_{u \in U} \mathcal{H}$, and this requires a completely different proof that does not pass through functional derivatives at all.
 
 Pontryagin's Maximum Principle in its full generality is precisely this stronger statement, valid for measurable controls, non-smooth trajectories, and controls on the boundary of $U$. We state it here as a theorem, identify exactly what it gives, and explain what the variational argument captures and what it misses.
 \end{mathrequirementsbox}
@@ -541,25 +562,31 @@ Let $(z_x^\star, u^\star)$ be an optimal pair for the problem:
 
 $$\min_{u \in U} \int_0^T L(s, z_x, u)\, ds + G(z_x(T)), \qquad \dot{z}_x = f(t, z_x, u), \quad z_x(0) = x$$
 
-Under the regularity assumptions of Step 1, there exists an absolutely continuous function $p_x : [0,T] \to \mathbb{R}^n$ such that the following four conditions hold simultaneously almost everywhere on $[0,T]$.
+Under the regularity assumptions of Section~\ref{sec:problem-setup}, there exists an absolutely continuous function $p_x : [0,T] \to \mathbb{R}^n$ such that the following four conditions hold simultaneously almost everywhere on $[0,T]$.
 
 \textbf{Condition 1 — State equation:}
 \begin{equation}\tag{3}
 \dot{z}_x = -\nabla_{p_x} \mathcal{H}(t, z_x, p_x, u^\star), \qquad z_x(0) = x
+\label{eq:pmp-state-tagged}
 \end{equation}
 
 \textbf{Condition 2 — Costate equation:}
 \begin{equation}\tag{4}
 \dot{p}_x = \nabla_{z_x} \mathcal{H}(t, z_x, p_x, u^\star), \qquad p_x(T) = \nabla G(z_x(T))
+\label{eq:pmp-costate-tagged}
 \end{equation}
 
 \textbf{Condition 3 — Global maximality:}
 \begin{equation}\tag{5}
 u^\star(t) \in \arg\max_{u \in U}\, \mathcal{H}(t, z_x(t), p_x(t), u) \quad \text{for a.e. } t \in [0,T]
+\label{eq:pmp-max-tagged}
 \end{equation}
 
 \textbf{Condition 4 — Hamiltonian constancy:}
-$$t \mapsto \mathcal{H}(t, z_x(t), p_x(t), u^\star(t)) = \text{const} \quad \text{if } f \text{ and } L \text{ do not depend explicitly on } t$$
+\begin{equation}
+t \mapsto \mathcal{H}(t, z_x(t), p_x(t), u^\star(t)) = \text{const} \quad \text{if } f \text{ and } L \text{ do not depend explicitly on } t
+\label{eq:hamiltonian-constancy}
+\end{equation}
 
 These are \textbf{necessary conditions} for optimality. They are not sufficient in general. A pair $(z_x^\star, u^\star, p_x)$ satisfying all four conditions is called an \textbf{extremal}, and $p_x$ is the corresponding \textbf{adjoint variable} or \textbf{costate}.
 \end{mathrequirementsbox}
@@ -569,7 +596,7 @@ These are \textbf{necessary conditions} for optimality. They are not sufficient 
 \subsubsection{What the Variational Argument Captured and What It Missed}
 
 \begin{mathrequirementsbox}
-The physics-style derivation of Steps 2–3 correctly produced conditions (3) and (4) in full generality, and correctly produced $\nabla_u \mathcal{H} = 0$ as a stationarity condition. What it could not produce is condition (3) in its full strength.
+The physics-style variational derivation correctly produced the state and costate equations in full generality, and correctly produced $\nabla_u \mathcal{H} = 0$ as a stationarity condition. What it could not produce is the global maximality condition in its full strength.
 
 The gap is this. The variational argument perturbs $u \to u + \varepsilon \delta u$ and demands the first-order term vanish. This is valid only when $u^\star$ lies in the \textbf{interior} of $U$, so that the perturbation $\delta u$ is free in all directions. When $u^\star(t)$ lies on the \textbf{boundary} of $U$ — which is the generic situation in many problems — you cannot perturb freely in all directions, and the condition $\nabla_u \mathcal{H} = 0$ is replaced by the weaker condition that $\mathcal{H}$ is non-increasing as you move away from $u^\star$ into the interior of $U$. The global maximality condition:
 
@@ -579,15 +606,15 @@ subsumes both cases cleanly without needing to distinguish interior from boundar
 
 The proper proof of PMP uses \textbf{needle variations} (also called Pontryagin variations): instead of perturbing $u$ by a small smooth function everywhere on $[0,T]$, one perturbs it on a single small interval $[t_0 - \varepsilon, t_0]$ by replacing $u^\star$ with an arbitrary fixed value $v \in U$. This localized perturbation is admissible regardless of whether $u^\star(t_0)$ is interior or boundary, and the resulting first-order expansion of $J$ yields the global maximality condition directly. The costate $p_x$ emerges in this proof as the solution to the adjoint equation that makes the first-order variation of $J$ expressible as a single inner product — it is the Riesz representer of the functional derivative of $J$ with respect to needle perturbations.
 
-We do not reproduce the full needle variation proof here — it is lengthy and primarily functional-analytic in character. What matters for our purposes is the output: equations (3), (4), and (5), which are the same equations the variational argument produced, but now valid for measurable $u^\star$ and controls on the boundary of $U$.
+We do not reproduce the full needle variation proof here — it is lengthy and primarily functional-analytic in character. What matters for our purposes is the output: the state equation, the costate equation, and the global maximality condition, now valid for measurable $u^\star$ and controls on the boundary of $U$.
 \end{mathrequirementsbox}
 
 \medskip\hrule\medskip
 
-\subsubsection{The Concavity Condition and the Implication in Equation (5)}
+\subsubsection{The Concavity Condition and the Implication in \eqref{eq:pmp-max-tagged}}
 
 \begin{mathrequirementsbox}
-The paper writes equation (5) as:
+The paper writes \eqref{eq:pmp-max-tagged} as:
 
 $$u^\star \in \arg\max_u\, \mathcal{H}(t, z_x, p_x, u) \implies \nabla_u \mathcal{H}(t, z_x, p_x, u^\star) = 0$$
 
@@ -623,19 +650,22 @@ This is the structural reason PMP is computationally hard. The standard approach
 
 \medskip\hrule\medskip
 
-\subsection{Step 5: The Explicit Hamiltonian Case and When PMP Can Be Solved}
+\subsection{The Explicit Hamiltonian Case and When PMP Can Be Solved}
+\label{sec:explicit-case}
 
 \medskip\hrule\medskip
 
 \subsubsection{What ``Explicit'' Means and Why It Matters}
 
-Having derived the PMP conditions (3)–(5), the question of practical solvability reduces to a single bottleneck: can you evaluate the maximality condition (5) in closed form? That is, given the current state $z_x$, costate $p_x$, and time $t$, can you write down an explicit formula:
+\begin{tldrbox}
+Having derived the PMP conditions \eqref{eq:pmp-state-tagged}--\eqref{eq:pmp-max-tagged}, the question of practical solvability reduces to a single bottleneck: can you evaluate the maximality condition \eqref{eq:pmp-max-tagged} in closed form? That is, given the current state $z_x$, costate $p_x$, and time $t$, can you write down an explicit formula:
 
 $$u^\star = g(t, z_x, p_x)$$
 
-for the optimal control as a function of the known quantities? If yes, the Hamiltonian is \textbf{explicit} — you can substitute $u^\star$ back into equations (3) and (4) and reduce the PMP system to a closed ODE in $(z_x, p_x)$ alone, which you can then attempt to solve numerically via the shooting method of Step 4. If no — if $\arg\max_{u \in U} \mathcal{H}$ has no closed form — the Hamiltonian is \textbf{implicit}, and this substitution cannot be made. The entire PMP-based computational pipeline breaks at this step.
+for the optimal control as a function of the known quantities? If yes, the Hamiltonian is \textbf{explicit} — you can substitute $u^\star$ back into the PMP state and costate equations and reduce the PMP system to a closed ODE in $(z_x, p_x)$ alone, which you can then attempt to solve numerically via a shooting method. If no — if $\arg\max_{u \in U} \mathcal{H}$ has no closed form — the Hamiltonian is \textbf{implicit}, and this substitution cannot be made. The entire PMP-based computational pipeline breaks at this step.
 
 This distinction is the central axis around which the paper's contribution turns. We develop the explicit case fully here, both to build intuition and to make precise exactly what fails in the implicit case.
+\end{tldrbox}
 
 \medskip\hrule\medskip
 
@@ -676,17 +706,19 @@ This is the explicit formula $u^\star = g(t, z_x, p_x)$. The optimal control is 
 
 \subsubsection{Substituting Back: The Reduced Hamiltonian System}
 
-Now substitute $u^\star = -R^{-1}B^\top p_x$ back into equations (3) and (4). The state equation (3) becomes:
+\begin{examplebox}
+Now substitute $u^\star = -R^{-1}B^\top p_x$ back into \eqref{eq:pmp-state-tagged} and \eqref{eq:pmp-costate-tagged}. The state equation \eqref{eq:pmp-state-tagged} becomes:
 
 $$\dot{z}_x = a(t, z_x) - B(t, z_x) R^{-1} B(t, z_x)^\top p_x$$
 
-The costate equation (4) becomes:
+The costate equation \eqref{eq:pmp-costate-tagged} becomes:
 
 $$\dot{p}_x = \nabla_{z_x} \mathcal{H}\big|_{u = u^\star} = -\nabla_{z_x} a^\top p_x + \nabla_{z_x}[B^\top p_x] R^{-1} B^\top p_x - \nabla_{z_x} C + \frac{1}{2}\nabla_{z_x}[p_x^\top B R^{-1} B^\top p_x]$$
 
 In the special case where $a$ and $B$ are both independent of $z_x$ — the \textbf{linear time-varying} system $\dot{z}_x = A(t) z_x + B(t) u$ with $a = Az_x$ — this simplifies dramatically and the system (3)–(4) becomes a linear BVP, solvable via the \textbf{Riccati equation}. This is the foundation of Linear Quadratic Regulator (LQR) theory, the most celebrated explicit optimal control solution.
 
 In the nonlinear case, the substitution still closes the system into a $2n$-dimensional autonomous ODE in $(z_x, p_x)$, which can be attacked numerically via the shooting method with a well-defined right-hand side at every step.
+\end{examplebox}
 
 \medskip\hrule\medskip
 
@@ -738,15 +770,17 @@ This is a fixed-point or root-finding problem \textbf{that must be solved numeri
 
 \medskip\hrule\medskip
 
-\subsection{Step 6: PMP as a Boundary Value Problem and Its Failure Mode}
+\subsection{PMP as a Boundary Value Problem and Its Failure Mode}
+\label{sec:pmp-bvp-failure}
 
 \medskip\hrule\medskip
 
 \subsubsection{Recasting PMP as a Shooting Problem}
 
-At the end of Step 4 we identified that PMP produces a two-point boundary value problem. Let us now make this completely concrete and show precisely where and why it breaks down computationally, both analytically and through a code implementation.
+As discussed above, PMP produces a two-point boundary value problem. Let us now make this completely concrete and show precisely where and why it breaks down computationally, both analytically and through a code implementation.
 
-In the explicit case of Step 5, substituting $u^\star = g(t, z_x, p_x)$ into (3) and (4) closes the system. Define the augmented phase space vector $\xi = (z_x, p_x) \in \mathbb{R}^{2n}$ and the closed right-hand side:
+\begin{mathrequirementsbox}
+In the explicit case, substituting $u^\star = g(t, z_x, p_x)$ into the PMP state and costate equations closes the system. Define the augmented phase space vector $\xi = (z_x, p_x) \in \mathbb{R}^{2n}$ and the closed right-hand side:
 
 $$F(t, \xi) = \begin{pmatrix} -\nabla_{p_x}\mathcal{H}(t, z_x, p_x, g(t, z_x, p_x)) \\ \nabla_{z_x}\mathcal{H}(t, z_x, p_x, g(t, z_x, p_x)) \end{pmatrix}$$
 
@@ -764,12 +798,15 @@ $$\dot{\xi}(t) = F(t, \xi(t)), \qquad \xi(0) = (x, q)$$
 to obtain $\xi(T; q) = (z_x(T; q), p_x(T; q))$. Define the \textbf{shooting residual}:
 
 $$R(q) = p_x(T; q) - \nabla G(z_x(T; q))$$
+\end{mathrequirementsbox}
 
 The true $p_x(0)$ is the root of $R(q) = 0$. This is an $n$-dimensional nonlinear root-finding problem, typically solved by Newton's method:
 
 $$q^{(k+1)} = q^{(k)} - \left[\frac{\partial R}{\partial q}(q^{(k)})\right]^{-1} R(q^{(k)})$$
 
+\begin{tldrbox}
 The Jacobian $\partial R / \partial q$ is the \textbf{monodromy matrix} — it measures how the endpoint $(z_x(T), p_x(T))$ varies when the initial costate $p_x(0)$ is perturbed. Computing it requires integrating $2n$ additional variational ODEs alongside the main system, one for each column of the Jacobian. The total cost of one Newton step is therefore $O(2n \times 2n)$ ODE integrations — already $O(n^2)$ in state dimension, before even accounting for the nonlinear iterations needed for convergence.
+\end{tldrbox}
 
 \medskip\hrule\medskip
 
@@ -971,14 +1008,15 @@ Together, these three experiments make precise the computational argument for mo
 
 \section{Part II --- The Hamilton-Jacobi-Bellman Equation}
 
-\subsection{Step 7: Bellman's Principle of Optimality and the Value Function}
+\subsection{Bellman's Principle of Optimality and the Value Function}
+\label{sec:hjb}
 
 \medskip\hrule\medskip
 
 \subsubsection{A Different Question Entirely}
 
 \begin{tldrbox}
-The PMP approach of Part I asks: given a specific initial condition $x$, what is the optimal control trajectory $u^\star(t)$? It answers by solving a boundary value problem in the phase space $(z_x, p_x)$, producing a single optimal trajectory valid only for that $x$. As Step 6 demonstrated, this is computationally fragile and produces no reusable structure across initial conditions.
+The PMP approach of Part I asks: given a specific initial condition $x$, what is the optimal control trajectory $u^\star(t)$? It answers by solving a boundary value problem in the phase space $(z_x, p_x)$, producing a single optimal trajectory valid only for that $x$. As shown in Section~\ref{sec:pmp-bvp-failure}, this is computationally fragile and produces no reusable structure across initial conditions.
 
 
 Part II asks a fundamentally different question: what is the optimal cost achievable from \textbf{every possible initial condition simultaneously}? The answer to this question is a single scalar function defined over the entire state space, and once you have it, the optimal control at any state at any time is immediately recoverable by differentiation. This function is the \textbf{value function}, and it is the central object of dynamic programming.
@@ -998,15 +1036,20 @@ $$\min_{u \in U} \int_0^T L(s, z_x, u)\, ds + G(z_x(T))$$
 
 subject to $\dot{z}_x = f(s, z_x, u)$, $z_x(0) = x$. Now generalize: instead of always starting at $t = 0$, consider starting from state $y$ at an arbitrary intermediate time $t \in [0, T]$. Define the \textbf{value function}:
 
-$$\phi(t, x) = \inf_{u \in U} \left\{ \int_t^T L(s, z_x, u)\, ds + G(z_x(T)) \right\}$$
+\begin{equation}
+\phi(t, x) = \inf_{u \in U} \left\{ \int_t^T L(s, z_x, u)\, ds + G(z_x(T)) \right\}
+\label{eq:value-function}
+\end{equation}
 
 subject to $\dot{z}_x = f(s, z_x, u)$, $z_x(t) = x$.
 
 This is the paper's notation: $\phi$ for the value function, with arguments $(t, x)$ where $t$ is the current time and $x$ is the current state. The infimum is over all admissible controls on the interval $[t, T]$. The subscript on $z_x$ now carries a double meaning: $z_x$ is the state trajectory starting from $x$ at time $t$, so more precisely $z_x(s; t, x)$, but we suppress the dependence on $(t,x)$ for notational cleanliness.
 
-Several immediate observations. First, $\phi(t, x)$ is a function of \textbf{two arguments}: time $t$ and state $x$. It lives on the $(n+1)$-dimensional space $[0,T] \times \mathbb{R}^n$. Second, the terminal condition is fixed: $\phi(T, x) = G(x)$ for all $x$, since starting at the terminal time leaves no control freedom and the cost is just the terminal penalty. Third, the value function at $t=0$ evaluated at the specific initial condition $x_0$ recovers the original optimal cost: $\phi(0, x_0) = \min_u J[u]$.
+Several immediate observations. First, $\phi(t, x)$ is a function of \textbf{two arguments}: time $t$ and state $x$. It lives on the $(n+1)$-dimensional space $[0,T] \times \mathbb{R}^n$.
 
-The value function is a global object. It encodes the answer to the optimal control problem for every possible initial condition simultaneously. This is its power and its computational burden.
+\begin{tldrbox}
+Second, the terminal condition is fixed: $\phi(T, x) = G(x)$ for all $x$, since starting at the terminal time leaves no control freedom and the cost is just the terminal penalty. Third, the value function at $t=0$ evaluated at the specific initial condition $x_0$ recovers the original optimal cost: $\phi(0, x_0) = \min_u J[u]$. The value function is a global object. It encodes the answer to the optimal control problem for every possible initial condition simultaneously. This is its power and its computational burden.
+\end{tldrbox}
 
 \medskip\hrule\medskip
 
@@ -1014,7 +1057,9 @@ The value function is a global object. It encodes the answer to the optimal cont
 
 The value function satisfies a fundamental \textbf{self-consistency condition} known as Bellman's principle of optimality. It can be stated informally as:
 
+\begin{tldrbox}
 \emph{An optimal policy has the property that, whatever the initial state and initial decision, the remaining decisions must constitute an optimal policy with regard to the state resulting from the first decision.}
+\end{tldrbox}
 
 More precisely, consider the optimal trajectory starting from $(t, x)$. Pick any intermediate time $t + \delta t$ with $\delta t > 0$ small. The trajectory from $t$ to $T$ is optimal. Therefore the portion from $t + \delta t$ to $T$ — starting from the state $z_x(t + \delta t)$ reached by the optimal control on $[t, t+\delta t]$ — must itself be optimal for the subproblem starting at $(t + \delta t, z_x(t + \delta t))$. If it were not, you could replace it with a better policy and reduce the total cost, contradicting the optimality of the original trajectory.
 
@@ -1022,7 +1067,10 @@ This self-consistency is not a theorem to be proved from outside — it is a con
 
 Formally, Bellman's principle states:
 
-$$\phi(t, x) = \inf_{u \in U} \left\{ \int_t^{t+\delta t} L(s, z_x, u)\, ds + \phi(t + \delta t,\, z_x(t + \delta t)) \right\}$$
+\begin{equation}
+\phi(t, x) = \inf_{u \in U} \left\{ \int_t^{t+\delta t} L(s, z_x, u)\, ds + \phi(t + \delta t,\, z_x(t + \delta t)) \right\}
+\label{eq:bellman-principle}
+\end{equation}
 
 for any $\delta t > 0$. The value function at $(t, x)$ equals the minimum over controls on the short interval $[t, t+\delta t]$ of the running cost on that interval plus the value function at the state reached at the end of the interval. The future optimal cost from $t + \delta t$ onward is exactly $\phi(t+\delta t, z_x(t+\delta t))$ — this is Bellman's principle packaging the entire future optimization into the single scalar $\phi$ evaluated at the next state.
 
@@ -1074,11 +1122,17 @@ with terminal condition $\phi(T, x) = G(x)$. This is the \textbf{Hamilton-Jacobi
 \begin{tldrbox}
 Define the \textbf{value-function Hamiltonian} — the same object that will appear in the paper's notation — by performing the optimization over $u$ inside the HJB equation:
 
-$$H(t, x, p) = \sup_{u \in U} \left[ -\langle p, f(t, x, u) \rangle - L(t, x, u) \right] = \sup_{u \in U} \mathcal{H}(t, x, p, u)$$
+\begin{equation}
+H(t, x, p) = \sup_{u \in U} \left[ -\langle p, f(t, x, u) \rangle - L(t, x, u) \right] = \sup_{u \in U} \mathcal{H}(t, x, p, u)
+\label{eq:optimized-hamiltonian}
+\end{equation}
 
 This is the \textbf{Legendre-Fenchel transform} of $L$ with respect to $u$, composed with $f$. With this definition, the HJB equation takes the compact form:
 
-$$-\frac{\partial \phi}{\partial t}(t, x) + H(t, x, \nabla_x \phi(t, x)) = 0, \qquad \phi(T, x) = G(x)$$
+\begin{equation}
+-\frac{\partial \phi}{\partial t}(t, x) + H(t, x, \nabla_x \phi(t, x)) = 0, \qquad \phi(T, x) = G(x)
+\label{eq:hjb-hamiltonian-form}
+\end{equation}
 
 \begin{physicsinsightbox}
 This is the paper's equation relating $\phi$ to $H$. It has the identical structure to the \textbf{Hamilton-Jacobi equation} of classical mechanics:
@@ -1090,7 +1144,10 @@ where $S(q,t)$ is Hamilton's principal function. The value function $\phi$ is th
 
 The optimal feedback control is then recovered as:
 
-$$u^\star(t, x) = \arg\sup_{u \in U}\, \mathcal{H}(t, x, \nabla_x \phi(t, x), u)$$
+\begin{equation}
+u^\star(t, x) = \arg\sup_{u \in U}\, \mathcal{H}(t, x, \nabla_x \phi(t, x), u)
+\label{eq:hjb-feedback}
+\end{equation}
 
 This is a \textbf{true feedback law}: given any state $x$ at any time $t$, compute $\nabla_x \phi(t, x)$ and maximize $\mathcal{H}$ over $u$. No BVP, no shooting, no dependence on initial conditions. The entire optimal policy is encoded in the single scalar field $\phi(t, x)$.
 \end{tldrbox}
@@ -1106,13 +1163,14 @@ At points where $\phi$ is not differentiable, the HJB equation does not hold in 
 \end{mathrequirementsbox}
 
 
-\subsection{Step 8: The Curse of Dimensionality and the Failure of Grid-Based HJB}
+\subsection{The Curse of Dimensionality and the Failure of Grid-Based HJB}
+\label{sec:curse}
 
 \medskip\hrule\medskip
 
 \subsubsection{Why the HJB PDE Cannot Be Solved Directly in High Dimensions}
 
-The HJB equation derived in Step 7,
+The HJB equation derived in Section~\ref{sec:hjb},
 
 \begin{equation}
     -\frac{\partial \phi}{\partial t}(t, x) + H(t, x, \nabla_x \phi(t, x)) = 0, \qquad \phi(T, x) = G(x),
@@ -1122,7 +1180,7 @@ The HJB equation derived in Step 7,
 is a first-order PDE defined over the $(n+1)$-dimensional domain $[0,T] \times \mathbb{R}^n$. To solve it numerically in the classical way, one discretizes this domain with a grid of $N$ points per spatial dimension, producing a grid of total size $N^n$ in the state space alone. For $n = 2$ and $N = 100$, this is $10^4$ points --- entirely manageable. For $n = 6$ and $N = 100$, this is $10^{12}$ points --- already beyond the memory of any existing computer. For $n = 20$, the number $N^{20}$ is astronomically large regardless of $N$. This exponential growth of computational cost with state dimension is the \textbf{curse of dimensionality}, a term coined by Bellman himself when he recognized that dynamic programming, despite its conceptual elegance, was computationally intractable for high-dimensional systems.
 
 \begin{compnumissuesbox}
-It is important to be precise about what \textit{kind} of exponential this is, and how it differs from the exponential that afflicts PMP. The PMP shooting problem becomes exponentially ill-conditioned as the \textit{time horizon} $T$ grows, through the Lyapunov exponent mechanism described in Step 6. The HJB grid discretization becomes exponentially costly as the \textit{state dimension} $n$ grows, through the volume of the grid. These are independent exponentials in different variables. A problem with short horizon and high state dimension would suffer from HJB's curse but not PMP's; a problem with long horizon and low state dimension would suffer from PMP's conditioning but not HJB's grid cost. The regime the paper targets --- high-dimensional state space \textit{and} long horizon --- is where \textit{both} classical approaches fail simultaneously. This is the precise gap the paper fills.
+It is important to be precise about what \textit{kind} of exponential this is, and how it differs from the exponential that afflicts PMP. The PMP shooting problem becomes exponentially ill-conditioned as the \textit{time horizon} $T$ grows, through the Lyapunov exponent mechanism described in Section~\ref{sec:pmp-bvp-failure}. The HJB grid discretization becomes exponentially costly as the \textit{state dimension} $n$ grows, through the volume of the grid. These are independent exponentials in different variables. A problem with short horizon and high state dimension would suffer from HJB's curse but not PMP's; a problem with long horizon and low state dimension would suffer from PMP's conditioning but not HJB's grid cost. The regime the paper targets --- high-dimensional state space \textit{and} long horizon --- is where \textit{both} classical approaches fail simultaneously. This is the precise gap the paper fills.
 \end{compnumissuesbox}
 \end{tldrbox}
 
@@ -1146,7 +1204,7 @@ All three costs share the same fundamental structure: they grow exponentially wi
 
 \subsubsection{Code Implementation: Timing the Explosion}
 
-We implement a grid-based HJB solver for the same nonlinear pendulum problem used in Step 6, then extend to higher state dimensions to measure the explosion directly.
+We implement a grid-based HJB solver for the same nonlinear pendulum problem used in Section~\ref{sec:pmp-bvp-failure}, then extend to higher state dimensions to measure the explosion directly.
 Code not shown for brevity
 % \begin{verbatim}
 % import numpy as np
@@ -1154,7 +1212,7 @@ Code not shown for brevity
 % import matplotlib.pyplot as plt
 % from itertools import product
 
-% # -- Problem parameters (same as Step 6) -------------------------------------
+% # -- Problem parameters (same as the PMP failure-mode section) ----------------
 % T    = 2.0
 % r    = 1.0
 % Q    = None          # will be eye(n) for each n
@@ -1289,7 +1347,8 @@ At this point in the document we have established the following precise picture.
 The next part develops the PMP--HJB bridge and shows how this identity can be combined with implicit solves and neural parameterization.
 
 
-\subsection{Step 9: The Optimized Hamiltonian, Feedback Law, and the Explicit-Hamiltonian Bottleneck}
+\subsection{The Optimized Hamiltonian, Feedback Law, and the Explicit-Hamiltonian Bottleneck}
+\label{sec:optimized-hamiltonian}
 
 \medskip\hrule\medskip
 
@@ -1318,7 +1377,7 @@ is precisely the \textbf{Legendre--Fenchel transform} (convex conjugate) of $L$
 with respect to $u$, evaluated at $-B^\top p$ where $B$ is the control matrix.
 In the quadratic case $L = \frac{1}{2}u^\top R u + C(t,x)$ with $f = a + Bu$,
 the supremum in \eqref{eq:H_def} is achieved at $u^\star = -R^{-1}B^\top p$
-(from Step 5), giving:
+(from the explicit-case subsection), giving:
 
 \begin{equation}
     H(t, x, p) = -\langle p, a \rangle - C(t,x)
@@ -1397,13 +1456,14 @@ developed rigorously in Part III.
 
 
 
-\subsection{Step 10: The Optimal Feedback Control from the Value Function}
+\subsection{The Optimal Feedback Control from the Value Function}
+\label{sec:feedback-control}
 
 \medskip\hrule\medskip
 
 \subsubsection{From PDE Solution to Control Policy}
 
-Step 9 established the HJB equation and its solution $\phi(t,x)$. We now address
+Section~\ref{sec:optimized-hamiltonian} established the HJB equation and its solution $\phi(t,x)$. We now address
 the direct policy extraction map $(t,x) \mapsto u^\star(t,x)$.
 
 Suppose $\phi$ is known and $C^1$. At any state $x$ at time $t$, the optimal
@@ -1434,7 +1494,7 @@ between $\phi$, the HJB equation, and optimality.
 
 \medskip
 
-\noindent\textbf{Theorem (Verification).} \textit{Let $\psi \in C^1([0,T] \times
+\noindent\textbf{Theorem (Verification).} \label{thm:verification} \textit{Let $\psi \in C^1([0,T] \times
 \mathbb{R}^n)$ be a classical solution to the HJB equation:}
 \begin{equation}
     -\frac{\partial \psi}{\partial t}(t,x)
@@ -1495,6 +1555,7 @@ residual.
 
 \subsubsection{Open-Loop vs.\ Feedback: A Precise Comparison}
 
+\begin{tldrbox}
 We can now state precisely the relationship between the PMP open-loop solution
 and the HJB feedback solution for the same problem.
 
@@ -1523,12 +1584,14 @@ $z_x^\star(t)$:
 \end{equation}
 
 The precise PMP--HJB identity that underpins this agreement is proved in Part III.
+\end{tldrbox}
 
 \pagebreak
 
 \section{Part III --- The PMP--HJB Bridge}
 
-\subsection{Step 12: The PMP--HJB Bridge via the Method of Characteristics}
+\subsection{The PMP--HJB Bridge via the Method of Characteristics}
+\label{sec:bridge}
 
 \medskip\hrule\medskip
 
@@ -1557,7 +1620,7 @@ Recall that the HJB equation is a first-order PDE in $(n+1)$ variables:
 
 \begin{equation}
     \phi_t + H(t, x, \nabla_x \phi) = 0, \qquad \phi(T, x) = G(x).
-    \label{eq:hjb_char}
+    \label{eq:hjb_char}\label{eq:hjb}
 \end{equation}
 
 For a general first-order PDE $\mathcal{F}(t, x, \phi, \phi_t, p) = 0$ where
@@ -1598,7 +1661,7 @@ $t$.
 \subsubsection{The Characteristics Are the PMP Trajectories}
 
 We now identify the characteristic equations \eqref{eq:char_x}--\eqref{eq:char_p}
-with the PMP system. Recall from Step 9 that:
+with the PMP system. Recall from Section~\ref{sec:optimized-hamiltonian} that:
 
 \begin{equation}
     \nabla_p H(t, x, p) = \nabla_p \mathcal{H}(t, x, p, u^\star)
@@ -1631,7 +1694,7 @@ variation of $u^\star$ itself. Substituting:
 
 where in \eqref{eq:char_pmp4} we use $-\nabla_x\mathcal{H} =
 \nabla_{z_x}\mathcal{H}$ up to the sign convention of the paper's $\mathcal{H}
-= -\langle p, f\rangle - L$. These are \textbf{exactly equations (3) and (4)
+= -\langle p, f\rangle - L$. These are \textbf{exactly \eqref{eq:pmp-state-tagged} and \eqref{eq:pmp-costate-tagged}
 of the paper}: the PMP state equation and costate equation. The characteristics
 of the HJB PDE are the optimal trajectories of PMP, running in the
 $(x, p)$-phase space under the Hamiltonian $H$.
@@ -1653,10 +1716,10 @@ neighborhood of this trajectory.
 
 \medskip
 
-\noindent\textbf{Proposition.} \textit{For all } $t \in [0,T]$,
+\noindent\textbf{Proposition.} \label{prop:gradient-identity} \textit{For all } $t \in [0,T]$,
 \begin{equation}
     p_x^\star(t) = \nabla_x \phi(t, z_x^\star(t)).
-    \label{eq:bridge}
+    \label{eq:bridge}\label{eq:pmp-hjb-gradient-identity}
 \end{equation}
 
 \medskip
@@ -1725,7 +1788,7 @@ procedure: as $\phi_\theta$ improves, the generated trajectories become more
 nearly optimal, and the identity \eqref{eq:bridge} is satisfied more accurately,
 which in turn improves the training signal. Convergence of this loop ---
 and the role of JFB in making it computationally tractable --- is the subject
-of Steps 17 and 18.
+in the subsequent sections.
 
 \textbf{Why prior work still needed explicit Hamiltonians.} Previous methods
 that used the identity \eqref{eq:bridge} still required a closed-form expression
@@ -1779,13 +1842,14 @@ PMP--HJB bridge entirely.
 \end{physicsinsightbox}
 
 
-\subsection{Step 13: The Bridge in Action --- From Identity to Implicit Solve}
+\subsection{From the Gradient Identity to the Implicit Solve}
+\label{sec:implicit-solve}
 
 \medskip\hrule\medskip
 
 \subsubsection{Where We Stand}
 
-Step 12 established the identity $p_x^\star(t) = \nabla_x \phi(t, z_x^\star(t))$
+Section~\ref{sec:bridge} established the identity $p_x^\star(t) = \nabla_x \phi(t, z_x^\star(t))$
 rigorously. We know that PMP and HJB are the same object, that the costate is
 the gradient of the value function along optimal trajectories, and that this
 identity is preserved by the symplectic structure of the Hamiltonian flow. We
@@ -1804,7 +1868,7 @@ developed.
 
 \subsubsection{The Explicit Case Revisited: What the Identity Buys Directly}
 
-In the explicit case (Step 5), the optimal control has a closed-form expression:
+In the explicit case (Section~\ref{sec:explicit-case}), the optimal control has a closed-form expression:
 
 \begin{equation}
     u^\star = g(t, z_x, p_x).
@@ -1826,7 +1890,7 @@ step via \eqref{eq:explicit_substitution}. This is precisely what prior
 neural-network value-function methods do, and it works seamlessly as long as
 $g$ is available.
 
-The canonical example from Step 5 is $u^\star = -R^{-1} B(t,z_x)^\top
+The canonical example from Section~\ref{sec:explicit-case} is $u^\star = -R^{-1} B(t,z_x)^\top
 \nabla_x \phi_\theta(t, z_x)$, a simple matrix-vector product applied to the
 gradient of the network. The cost of evaluating $u^\star$ at each ODE step is
 $O(mn)$ --- one matrix-vector multiply --- on top of the autodiff cost.
@@ -1842,7 +1906,7 @@ optimality condition becomes:
 
 \begin{equation}
     \nabla_u \mathcal{H}(t, z_x, \nabla_x \phi_\theta(t, z_x), u^\star) = 0.
-    \label{eq:implicit_condition}
+    \label{eq:implicit_condition}\label{eq:implicit-stationarity}
 \end{equation}
 
 This is a nonlinear equation in $u^\star \in \mathbb{R}^m$ that must be solved
@@ -1875,7 +1939,7 @@ The resolution is to treat \eqref{eq:implicit_condition} as a
     F(u;\, t, z_x, \theta)
     := \nabla_u \mathcal{H}(t, z_x, \nabla_x \phi_\theta(t, z_x), u)
     = 0.
-    \label{eq:fixed_point}
+    \label{eq:fixed_point}\label{eq:implicit-F}
 \end{equation}
 
 This is a system of $m$ equations in $m$ unknowns $u \in \mathbb{R}^m$,
@@ -1887,20 +1951,20 @@ $\partial F / \partial u$ is invertible at the solution:
 \begin{equation}
     \frac{\partial F}{\partial u}\bigg|_{u^\star}
     = \nabla^2_{uu} \mathcal{H}(t, z_x, \nabla_x\phi_\theta, u^\star).
-    \label{eq:IFT_condition}
+    \label{eq:IFT_condition}\label{eq:ift-jacobian}
 \end{equation}
 
 This Jacobian is invertible if and only if $\nabla^2_{uu}\mathcal{H} \prec 0$
 --- that is, if $\mathcal{H}$ is \textbf{strictly concave in $u$} at $u^\star$.
-This is the same concavity condition identified in Steps 3 and 4 as necessary
+This is the same concavity condition identified earlier as necessary
 for the implication $u^\star \in \arg\max_u \mathcal{H} \Rightarrow \nabla_u
 \mathcal{H} = 0$ to hold and for the maximizer to be unique. Concavity of
 $\mathcal{H}$ in $u$ therefore plays three roles simultaneously:
 
 \begin{enumerate}
     \item It guarantees that the first-order condition $\nabla_u \mathcal{H} = 0$
-          is both necessary \textit{and} sufficient for a global maximum (Step 4).
-    \item It guarantees the maximizer $u^\star$ is unique (Step 5).
+          is both necessary \textit{and} sufficient for a global maximum.
+    \item It guarantees the maximizer $u^\star$ is unique.
     \item It guarantees via the IFT that $u^\star(t, z_x, \theta)$ is a
           smooth function of all its arguments, and in particular is
           differentiable with respect to the network parameters $\theta$
@@ -1918,7 +1982,7 @@ implicitly:
     \frac{\partial u^\star}{\partial \theta}
     = -\left[\nabla^2_{uu}\mathcal{H}\right]^{-1}
     \nabla_{u,\theta}^2 \mathcal{H}
-    \label{eq:IFT_derivative}
+    \label{eq:IFT_derivative}\label{eq:du-dtheta}
 \end{equation}
 
 where $\nabla^2_{u,\theta}\mathcal{H} = \partial^2 \mathcal{H} /
@@ -1927,7 +1991,7 @@ with $\theta$ (through the dependence of $\nabla_x\phi_\theta$ on $\theta$).
 This is the exact gradient of $u^\star$ with respect to $\theta$. Computing it
 requires solving one linear system involving $\nabla^2_{uu}\mathcal{H}$ per
 parameter --- which is expensive and is precisely what
-\textbf{Jacobian-Free Backpropagation} avoids. We return to this in Step 18.
+\textbf{Jacobian-Free Backpropagation} avoids. We return to this in Section~\ref{sec:jfb}.
 
 \medskip\hrule\medskip
 
@@ -1943,7 +2007,7 @@ or zero), iterate:
     - \left[\nabla^2_{uu}\mathcal{H}(t, z_x, \nabla_x\phi_\theta, u^{(k)})
     \right]^{-1}
     \nabla_u \mathcal{H}(t, z_x, \nabla_x\phi_\theta, u^{(k)})
-    \label{eq:newton}
+    \label{eq:newton}\label{eq:newton-update}
 \end{equation}
 
 until $\|\nabla_u \mathcal{H}\| < \varepsilon_{\text{tol}}$ for some tolerance
@@ -1974,7 +2038,7 @@ inverse without forming it explicitly, at the cost of slower convergence.
 by differentiating the network with respect to its input $x$. This is a standard
 autodiff operation. Crucially, the Newton iteration itself is \textit{not}
 differentiated through during training --- this is the stop-gradient operation
-that defines JFB and is justified in Step 18.
+that defines JFB and is justified in Section~\ref{sec:jfb}.
 
 \medskip\hrule\medskip
 
@@ -1993,7 +2057,7 @@ with the implicit solve:
           Cost: one backward pass through the network, same order as forward.
 
     \item \textbf{Set costate:} $p_x \leftarrow \nabla_x\phi_\theta(t, z_x)$
-          via the bridge identity of Step 12.
+          via the bridge identity of Section~\ref{sec:bridge}.
 
     \item \textbf{Newton solve:} iterate \eqref{eq:newton} until convergence
           to obtain $u^\star$. Cost: $K$ Newton steps, each requiring one
@@ -2042,18 +2106,19 @@ $\theta$). The implicit term requires differentiating through the ODE solver and
 through the Newton iterations, which is the computational bottleneck that
 \textbf{Jacobian-Free Backpropagation} resolves.
 
-Steps 14 through 18 develop the training procedure in full, culminating in the
-JFB theorem and its proof. Step 14 introduces the neural network architecture
-and the HJB residual loss. Step 15 defines the training loop and makes the
-temporal coupling explicit. Steps 16 and 17 develop the full gradient expression
-and identify the expensive term. Step 18 introduces JFB, proves it produces
+The remaining sections develop the training procedure in full, culminating in the
+JFB theorem and its proof. Section~\ref{sec:nn-param} introduces the neural network architecture
+and the HJB residual loss. Section~\ref{sec:training-temporal-coupling} defines the training loop and makes the
+temporal coupling explicit. Sections~\ref{sec:full-gradient} and~\ref{sec:jfb-descent} develop the full gradient expression
+and identify the expensive term. Section~\ref{sec:jfb} introduces JFB, proves it produces
 descent directions, and completes the paper's contribution.
 
 \pagebreak
 
 \section{Part IV --- Neural Network Approach and Jacobian-Free Backpropagation}
 
-\subsection{Step 14: Neural Network Parameterization of the Value Function}
+\subsection{Neural Network Parameterization of the Value Function}
+\label{sec:nn-param}
 
 \medskip\hrule\medskip
 
@@ -2062,7 +2127,7 @@ descent directions, and completes the paper's contribution.
 The value function $\phi(t,x)$ is a scalar field on the $(n+1)$-dimensional
 domain $[0,T] \times \mathbb{R}^n$. Classical methods represent it on a grid,
 which requires $O(N^n)$ storage and computation --- intractable for $n \gtrsim
-6$ as established in Step 8. The fundamental issue is that any
+6$ as established in Section~\ref{sec:curse}. The fundamental issue is that any
 \textbf{fixed-basis representation} of a function on $\mathbb{R}^n$ --- grids,
 polynomial expansions, radial basis functions --- requires a number of basis
 elements that grows at least polynomially, and typically exponentially, with
@@ -2163,7 +2228,7 @@ the mean squared HJB residual over a distribution of sample points:
     \mathcal{L}(\theta)
     = \mathbb{E}_{(t,x) \sim \mu_\theta}
     \left[ \mathcal{R}(t, x;\theta)^2 \right]
-    \label{eq:loss}
+    \label{eq:hjb-residual-loss}
 \end{equation}
 
 where $\mu_\theta$ is a distribution over $[0,T] \times \mathbb{R}^n$ from
@@ -2171,12 +2236,12 @@ which training points are sampled. The dependence of $\mu_\theta$ on $\theta$
 is the source of the temporal coupling problem: training points are generated
 by simulating trajectories under the current policy $u^\star(\cdot;\theta)$,
 which itself depends on $\theta$ through $\nabla_x\phi_\theta$. We make this
-explicit in Step 15.
+explicit in Section~\ref{sec:training-temporal-coupling}.
 
 \textbf{Evaluating the residual for implicit Hamiltonians.} Computing
 $\mathcal{R}(t,x;\theta)$ requires evaluating $H(t,x,\nabla_x\phi_\theta)
 = \sup_u \mathcal{H}(t,x,\nabla_x\phi_\theta,u)$. This requires the implicit
-solve of Step 13: Newton's method applied to $\nabla_u\mathcal{H} = 0$ with
+solve of Section~\ref{sec:implicit-solve}: Newton's method applied to $\nabla_u\mathcal{H} = 0$ with
 $p_x = \nabla_x\phi_\theta(t,x)$. For the explicit case, this is a closed-form
 evaluation. For the implicit case, it is a Newton loop. In both cases the result
 $u^\star(t,x;\theta)$ is substituted back to give:
@@ -2218,7 +2283,7 @@ costate, which \textit{requires} the value function parameterization.
 conditions simultaneously. A policy $u_\theta(t,x)$ does too in principle, but
 without the HJB constraint there is no guarantee that $u_\theta$ is consistent
 across different initial conditions in the way that $\nabla_x\phi_\theta$
-automatically is (by the Lagrangian submanifold structure of Step 12).
+automatically is (by the Lagrangian submanifold structure of Section~\ref{sec:bridge}).
 
 These three reasons together explain why the paper's architecture is
 $\phi_\theta$ rather than $u_\theta$, and why this choice is not merely
@@ -2244,7 +2309,7 @@ need a closed-form expression for $u^\star = g(t, z_x, \nabla_x\phi_\theta)$ to:
 \end{enumerate}
 
 Without $g$, all three steps break down. The paper resolves this by replacing
-$g$ with the Newton solve of Step 13, and replacing exact backpropagation
+$g$ with the Newton solve of Section~\ref{sec:implicit-solve}, and replacing exact backpropagation
 through the trajectory with JFB. This is the precise gap the paper fills in the
 landscape of neural HJB methods.
 
@@ -2252,7 +2317,8 @@ landscape of neural HJB methods.
 
 \hrule
 
-\subsection{Step 15: End-to-End Training and Temporal Coupling}
+\subsection{End-to-End Training and Temporal Coupling}
+\label{sec:training-temporal-coupling}
 
 \medskip\hrule\medskip
 
@@ -2274,7 +2340,7 @@ is generated by integrating the controlled dynamics forward in time:
 \end{equation}
 
 where $u^\star(t, z_{x_i};\theta)$ is evaluated at each integration step via
-the pipeline of Step 13: autodiff to get $\nabla_x\phi_\theta$, then Newton's
+the pipeline of Section~\ref{sec:implicit-solve}: autodiff to get $\nabla_x\phi_\theta$, then Newton's
 method to solve $\nabla_u\mathcal{H} = 0$. Along each trajectory, the HJB
 residual $\mathcal{R}(t, z_{x_i}(t);\theta)$ is evaluated at a set of
 quadrature time points $\{t_j\}_{j=1}^{M}$. The total training loss is:
@@ -2355,7 +2421,7 @@ respect to $\theta$:
 
 with initial condition $dz_{x_i}(0)/d\theta = 0$ (the initial condition $x_i$
 does not depend on $\theta$). The term $du^\star/d\theta$ itself requires the
-IFT formula \eqref{eq:IFT_derivative} from Step 13:
+IFT formula \eqref{eq:IFT_derivative} from Section~\ref{sec:implicit-solve}:
 
 \begin{equation}
     \frac{du^\star}{d\theta}
@@ -2434,7 +2500,7 @@ differentiates through those trajectories. What the implicit Hamiltonian adds
 is an additional layer of coupling: $u^\star$ depends on $\theta$ not only
 through $\phi_\theta$ evaluated at the trajectory points, but also through the
 Newton solve, which itself depends on $\nabla_x\phi_\theta$ via
-\eqref{eq:dustar_dtheta}. The JFB approach of Step 18 addresses both layers
+\eqref{eq:dustar_dtheta}. The JFB approach of Section~\ref{sec:jfb} addresses both layers
 simultaneously by dropping Term II entirely and showing that Term I alone is
 sufficient for convergence.
 
@@ -2464,24 +2530,25 @@ training distribution is the one most tightly coupled to the current parameters.
 
 This tension is resolved not by changing the sampling strategy but by
 approximating the gradient --- keeping Term I and discarding Term II --- which
-is the JFB approach of Step 18. The key insight, which Step 18 makes
+is the JFB approach of Section~\ref{sec:jfb}. The key insight, made precise there,
 mathematically precise, is that Term I alone carries enough information about
 the true gradient direction to guarantee convergence, even though it ignores
 how the training distribution changes with $\theta$.
 
 
-Here are Steps 16 and 17 directly pastable into Overleaf:
+The next two subsections are directly pastable into Overleaf:
 
 ```latex
-\subsection{Step 16: The Full Gradient Expression and the Expensive Term}
+\subsection{The Full Gradient Expression and the Expensive Term}
+\label{sec:full-gradient}
 
 \medskip\hrule\medskip
 
 \subsubsection{Consolidating the Gradient Split}
 
-Step 15 identified the two-term gradient split \eqref{eq:gradient_split}.
+Section~\ref{sec:training-temporal-coupling} identified the two-term gradient split \eqref{eq:gradient_split}.
 We now write it in a single compact expression that makes the structure of
-the approximation in Step 18 immediately visible.
+the approximation used in Section~\ref{sec:jfb} immediately visible.
 
 For a single trajectory starting from $x$, discretize time as $0 = t_0 
 t_1 < \cdots < t_M = T$ with spacing $\Delta t = T/M$. Write
@@ -2582,22 +2649,23 @@ approximation. Without justification, this could lead to:
 \end{enumerate}
 
 None of these pathologies occur under the conditions the paper establishes,
-because Term I and the full gradient make an angle of less than $90°$ ---
+because Term I and the full gradient make an angle of less than $90^{\circ}$ ---
 guaranteeing that Term I is a descent direction. This is the content of
-Step 17.
+the descent-direction theorem in Section~\ref{sec:jfb-descent}.
 
 \medskip
 
 \hrule
 
-\subsection{Step 17: Jacobian-Free Backpropagation --- The Descent Direction
-Theorem}
+\subsection{Jacobian-Free Backpropagation --- The Descent Direction Theorem}
+\label{sec:jfb-descent}
 
 \medskip\hrule\medskip
 
 \subsubsection{Setup and Statement}
 
 We now state and prove the paper's central theoretical result: that the JFB
+\label{thm:jfb-descent}
 gradient $\widetilde{\nabla}_\theta\mathcal{L}$ --- Term I of
 \eqref{eq:full_gradient} --- is a descent direction for the true loss
 $\mathcal{L}(\theta)$. This means:
@@ -2754,16 +2822,17 @@ implicit network setting. The bound \eqref{eq:E_bound} is therefore a
 genuine contribution of the paper, providing the first theoretical guarantee
 for JFB applied to trajectory optimization with implicit Hamiltonians.
 
-Here are Steps 18 and the concluding synthesis directly pastable into Overleaf:
+The following subsection and the concluding synthesis are directly pastable into Overleaf:
 
 ```latex
-\subsection{Step 18: Jacobian-Free Backpropagation --- The Complete Algorithm}
+\subsection{Jacobian-Free Backpropagation --- The Complete Algorithm}
+\label{sec:jfb}
 
 \medskip\hrule\medskip
 
 \subsubsection{Defining JFB Precisely}
 
-Step 17 established that Term I of the gradient split \eqref{eq:full_gradient}
+Section~\ref{sec:jfb-descent} established that Term I of the gradient split \eqref{eq:full_gradient}
 is a descent direction under mild conditions. We now define JFB precisely as
 an algorithmic operation, show exactly where the stop-gradient appears in the
 computational graph, and present the complete training algorithm that constitutes
@@ -2814,7 +2883,7 @@ $u^\star(t_j, \bar{z}_{x_i}(t_j);\theta)$ for use in the residual
 evaluation, the Newton iterations are not differentiated through. The output
 $u^\star$ is used to evaluate $\mathcal{R}$ but treated as a constant for
 backpropagation. This is the second layer of the JFB approximation, handling
-the implicit Hamiltonian coupling identified in Step 15.
+the implicit Hamiltonian coupling identified in Section~\ref{sec:training-temporal-coupling}.
 
 \medskip\hrule\medskip
 
@@ -2903,18 +2972,18 @@ The feedback law is $u^\star(t,x) = \arg\sup_{u \in U}\mathcal{H}(t, x,
 
 The cost of one iteration of the algorithm above breaks down as follows.
 
-\textbf{Trajectory generation (Step 2).} For each of $B$ trajectories with
+\textbf{Trajectory generation.} For each of $B$ trajectories with
 $M$ time steps, each step requires one forward pass and one backward pass
 through $\phi_\theta$ for $\nabla_x\phi_\theta$, plus $K$ Newton iterations
 each costing $O(m^3)$ (for the $m \times m$ linear solve). Total cost:
 $O(B \cdot M \cdot (P + K m^3))$.
 
-\textbf{Residual evaluation (Step 3).} For each of $BM$ trajectory points,
+\textbf{Residual evaluation.} For each of $BM$ trajectory points,
 one forward pass through $\phi_\theta$ for $\partial_t\phi_\theta$ and
 $\nabla_x\phi_\theta$, plus $K$ Newton iterations. Total cost:
 $O(B \cdot M \cdot (P + Km^3))$.
 
-\textbf{Backpropagation (Step 5).} Standard autodiff through $\phi_\theta$
+\textbf{Backpropagation.} Standard autodiff through $\phi_\theta$
 at $BM$ fixed points. Total cost: $O(B \cdot M \cdot P)$.
 
 The dominant cost is $O(B \cdot M \cdot P)$ --- linear in all of $B$, $M$,
@@ -2956,6 +3025,7 @@ policy for all initial conditions is encoded in $\theta^\star$.
 \hrule
 
 \subsection{Synthesis: The Complete Contribution}
+\label{sec:synthesis}
 
 \medskip\hrule\medskip
 
@@ -2965,7 +3035,7 @@ This document has developed the paper's contribution from first principles
 through four parts, each building on the last.
 
 \textbf{Part I} derived PMP from the augmented action principle, producing
-equations (3), (4), and (5) of the paper. It identified the two-point BVP
+\eqref{eq:pmp-state-tagged}, \eqref{eq:pmp-costate-tagged}, and \eqref{eq:pmp-max-tagged}. It identified the two-point BVP
 structure, the shooting method, and its failure modes: exponential
 conditioning with horizon and the requirement for a closed-form $u^\star =
 g(t, z_x, p_x)$ to close the ODE system.
@@ -3002,7 +3072,7 @@ simultaneously. Removing any one of them breaks the method.
 
 \textbf{Ingredient 1: Value function parameterization $\phi_\theta$.}
 This is necessary rather than policy parameterization $u_\theta$ for three
-reasons established in Step 14: it injects physical structure via the HJB
+reasons established in Section~\ref{sec:nn-param}: it injects physical structure via the HJB
 constraint, it provides the costate $\nabla_x\phi_\theta$ needed for the
 implicit solve, and it automatically satisfies the integrability condition
 of the Lagrangian submanifold structure. Without $\phi_\theta$, there is no

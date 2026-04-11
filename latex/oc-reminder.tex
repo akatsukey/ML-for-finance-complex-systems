@@ -1105,83 +1105,6 @@ A critical mathematical point must be addressed. The derivation above assumed $\
 At points where $\phi$ is not differentiable, the HJB equation does not hold in the classical sense. The correct notion of solution is the \textbf{viscosity solution}, introduced by Crandall and Lions in 1983. A viscosity solution replaces pointwise derivatives with one-sided test function conditions and is the unique weak solution of the HJB equation under mild assumptions. For our purposes, the key fact is that the value function $\phi$ is always a viscosity solution of the HJB equation, even when not classically differentiable. When $\phi$ is smooth at a point $(t,x)$, the viscosity solution coincides with the classical one. Since neural network approximations of $\phi$ produce smooth functions by construction, they implicitly work in the regime where $\phi$ is smooth — a standing assumption that is reasonable for many practical problems and is implicitly made throughout the paper.
 \end{mathrequirementsbox}
 
-\pagebreak
-
-\section{Bellman's Principle of Optimality and the Value Function}
-
-\subsection{A Different Question Entirely}
-
-The PMP approach of Part I asks: given an initial condition $x$, what is the optimal control trajectory $u^\star(t)$? It produces a single optimal trajectory by solving a boundary value problem in $(z_x, p_x)$, valid only for that initial condition.
-
-In contrast, dynamic programming asks: what is the optimal cost achievable from \textbf{every initial condition simultaneously}? The answer is a scalar function defined over the entire state space, from which the optimal control can be recovered pointwise. This function is the \textbf{value function}.
-
-Rather than studying individual trajectories, we study a scalar field over state space. This is analogous to Hamilton's principal function $S(q,t)$ in classical mechanics, which encodes all trajectories simultaneously.
-
-\subsection{The Value Function — Definition}
-
-For an initial state $x$ at time $t$, define the value function
-\[
-\phi(t, x) = \inf_{u \in U} \left\{ \int_t^T L(s, z_x, u)\, ds + G(z_x(T)) \right\},
-\]
-subject to $\dot{z}_x = f(s, z_x, u)$ and $z_x(t) = x$.
-
-The value function depends on both time and state, $\phi : [0,T] \times \mathbb{R}^n \to \mathbb{R}$, with terminal condition $\phi(T,x) = G(x)$. Evaluated at $t=0$, it recovers the original optimal cost.
-
-\subsection{Bellman's Principle of Optimality}
-
-The value function satisfies a self-consistency condition: along an optimal trajectory, any subtrajectory must itself be optimal. Formally, for any $\delta t > 0$,
-\[
-\phi(t, x) = \inf_{u \in U} \left\{ \int_t^{t+\delta t} L(s, z_x, u)\, ds + \phi(t + \delta t,\, z_x(t + \delta t)) \right\}.
-\]
-
-This follows from the additive structure of the cost functional and is the foundation of dynamic programming.
-
-\subsection{Derivation of the HJB Equation}
-
-Assuming $\phi$ is $C^1$, expand to first order:
-\[
-\phi(t + \delta t, z_x(t + \delta t))
-= \phi(t,x) + \delta t\, \partial_t \phi(t,x)
-+ \delta t\, \langle \nabla_x \phi(t,x), f(t,x,u) \rangle + O(\delta t^2),
-\]
-\[
-\int_t^{t+\delta t} L\, ds = \delta t\, L(t,x,u) + O(\delta t^2).
-\]
-
-Substituting into Bellman's principle and letting $\delta t \to 0$ yields
-\[
--\partial_t \phi(t,x) = \inf_{u \in U} \left\{ L(t,x,u) + \langle \nabla_x \phi(t,x), f(t,x,u) \rangle \right\},
-\]
-with terminal condition $\phi(T,x) = G(x)$.
-
-This is the \textbf{Hamilton-Jacobi-Bellman equation}.
-
-\subsection{Hamiltonian Formulation}
-
-Define the value-function Hamiltonian
-\[
-H(t,x,p) = \sup_{u \in U} \left[ -\langle p, f(t,x,u)\rangle - L(t,x,u) \right]
-= \sup_{u \in U} \mathcal{H}(t,x,p,u).
-\]
-
-Then the HJB equation becomes
-\[
--\partial_t \phi(t,x) + H(t,x,\nabla_x \phi(t,x)) = 0.
-\]
-
-The optimal control is recovered as the feedback law
-\[
-u^\star(t,x) = \arg\sup_{u \in U} \mathcal{H}(t,x,\nabla_x \phi(t,x),u).
-\]
-
-\subsection{Regularity and Viscosity Solutions}
-
-In general, $\phi$ need not be smooth; the correct notion of solution is the \textbf{viscosity solution}. Even when $\phi$ is not differentiable, it satisfies the HJB equation in this weak sense. Neural network approximations produce smooth functions, corresponding to regions where classical derivatives exist.
-
-\subsection{Contrast with PMP}
-
-PMP yields an open-loop control $u^\star(t)$ for a single initial condition via a boundary value problem. In contrast, HJB yields a feedback law $u^\star(t,x)$ valid for all initial conditions simultaneously. This global characterization comes at the cost of solving a PDE in $(n+1)$ dimensions, leading to the curse of dimensionality.
-
 
 \subsection{Step 8: The Curse of Dimensionality and the Failure of Grid-Based HJB}
 
@@ -1218,120 +1141,120 @@ All three costs share the same fundamental structure: they grow exponentially wi
 \subsubsection{Code Implementation: Timing the Explosion}
 
 We implement a grid-based HJB solver for the same nonlinear pendulum problem used in Step 6, then extend to higher state dimensions to measure the explosion directly.
+Code not shown for brevity
+% \begin{verbatim}
+% import numpy as np
+% import time
+% import matplotlib.pyplot as plt
+% from itertools import product
 
-\begin{verbatim}
-import numpy as np
-import time
-import matplotlib.pyplot as plt
-from itertools import product
+% # -- Problem parameters (same as Step 6) -------------------------------------
+% T    = 2.0
+% r    = 1.0
+% Q    = None          # will be eye(n) for each n
+% Qf   = None          # will be 5*eye(n)
 
-# -- Problem parameters (same as Step 6) -------------------------------------
-T    = 2.0
-r    = 1.0
-Q    = None          # will be eye(n) for each n
-Qf   = None          # will be 5*eye(n)
+% def build_grid(n, N, x_min=-3.0, x_max=3.0):
+%     """
+%     Build an n-dimensional grid with N points per dimension.
+%     Returns the grid as a list of 1D arrays (one per dimension)
+%     and the total number of points.
+%     """
+%     axes       = [np.linspace(x_min, x_max, N) for _ in range(n)]
+%     total_pts  = N ** n
+%     return axes, total_pts
 
-def build_grid(n, N, x_min=-3.0, x_max=3.0):
-    """
-    Build an n-dimensional grid with N points per dimension.
-    Returns the grid as a list of 1D arrays (one per dimension)
-    and the total number of points.
-    """
-    axes       = [np.linspace(x_min, x_max, N) for _ in range(n)]
-    total_pts  = N ** n
-    return axes, total_pts
+% def hjb_grid_cost(n, N, N_t=50):
+%     """
+%     Measure memory and timing cost of setting up and doing one
+%     backward time step of HJB on an n-dimensional grid with N pts/dim.
+%     Returns (memory_bytes, time_seconds) or None if too large.
+%     """
+%     total_pts = N ** n
+%     memory_bytes = total_pts * 8   # float64
 
-def hjb_grid_cost(n, N, N_t=50):
-    """
-    Measure memory and timing cost of setting up and doing one
-    backward time step of HJB on an n-dimensional grid with N pts/dim.
-    Returns (memory_bytes, time_seconds) or None if too large.
-    """
-    total_pts = N ** n
-    memory_bytes = total_pts * 8   # float64
+%     # refuse if > 4 GB
+%     if memory_bytes > 4e9:
+%         return memory_bytes, None
 
-    # refuse if > 4 GB
-    if memory_bytes > 4e9:
-        return memory_bytes, None
+%     t0 = time.time()
 
-    t0 = time.time()
+%     # allocate value function grid
+%     shape = tuple([N] * n)
+%     phi   = np.zeros(shape, dtype=np.float64)
 
-    # allocate value function grid
-    shape = tuple([N] * n)
-    phi   = np.zeros(shape, dtype=np.float64)
+%     # terminal condition: phi(T, x) = G(x) = 0.5 * x'Qf x
+%     # for efficiency, build using meshgrid only up to n=5
+%     if n <= 5:
+%         axes = [np.linspace(-3.0, 3.0, N) for _ in range(n)]
+%         grids = np.meshgrid(*axes, indexing='ij')
+%         phi_T = sum(5.0 * 0.5 * g**2 for g in grids)
+%         phi[:] = phi_T
+%     else:
+%         # too large to meshgrid: just fill with zeros as proxy
+%         phi[:] = 0.0
 
-    # terminal condition: phi(T, x) = G(x) = 0.5 * x'Qf x
-    # for efficiency, build using meshgrid only up to n=5
-    if n <= 5:
-        axes = [np.linspace(-3.0, 3.0, N) for _ in range(n)]
-        grids = np.meshgrid(*axes, indexing='ij')
-        phi_T = sum(5.0 * 0.5 * g**2 for g in grids)
-        phi[:] = phi_T
-    else:
-        # too large to meshgrid: just fill with zeros as proxy
-        phi[:] = 0.0
+%     # one backward Euler step of HJB (simplified: just evaluate
+%     # the finite-difference gradient at every grid point)
+%     dt     = T / N_t
+%     dx     = 6.0 / (N - 1)
 
-    # one backward Euler step of HJB (simplified: just evaluate
-    # the finite-difference gradient at every grid point)
-    dt     = T / N_t
-    dx     = 6.0 / (N - 1)
+%     # compute grad_x phi via central differences at every interior point
+%     # only dimension 0 for timing purposes (representative cost)
+%     slc_fwd = [slice(None)] * n
+%     slc_bwd = [slice(None)] * n
+%     slc_fwd[0] = slice(2, N)
+%     slc_bwd[0] = slice(0, N-2)
+%     grad0 = (phi[tuple(slc_fwd)] - phi[tuple(slc_bwd)]) / (2 * dx)
 
-    # compute grad_x phi via central differences at every interior point
-    # only dimension 0 for timing purposes (representative cost)
-    slc_fwd = [slice(None)] * n
-    slc_bwd = [slice(None)] * n
-    slc_fwd[0] = slice(2, N)
-    slc_bwd[0] = slice(0, N-2)
-    grad0 = (phi[tuple(slc_fwd)] - phi[tuple(slc_bwd)]) / (2 * dx)
+%     elapsed = time.time() - t0
+%     return memory_bytes, elapsed
 
-    elapsed = time.time() - t0
-    return memory_bytes, elapsed
+% # -- Experiment: sweep over (n, N) -------------------------------------------
+% dimensions = [2, 3, 4, 5, 6, 8, 10]
+% N_pts      = [20, 15, 10, 8, 6, 4, 3]   # decreasing N as n grows
 
-# -- Experiment: sweep over (n, N) -------------------------------------------
-dimensions = [2, 3, 4, 5, 6, 8, 10]
-N_pts      = [20, 15, 10, 8, 6, 4, 3]   # decreasing N as n grows
+% print(f"{'n':>4} {'N':>4} {'Grid points':>15}"
+%       f" {'Memory (MB)':>12} {'Time (s)':>10}")
+% print("-" * 55)
 
-print(f"{'n':>4} {'N':>4} {'Grid points':>15}"
-      f" {'Memory (MB)':>12} {'Time (s)':>10}")
-print("-" * 55)
+% results = []
+% for n, N in zip(dimensions, N_pts):
+%     total_pts    = N ** n
+%     mem_bytes, t = hjb_grid_cost(n, N)
+%     mem_mb       = mem_bytes / 1e6
+%     t_str        = f"{t:.4f}" if t is not None else "OOM"
+%     print(f"{n:>4} {N:>4} {total_pts:>15,} {mem_mb:>12.1f} {t_str:>10}")
+%     results.append((n, N, total_pts, mem_mb, t))
 
-results = []
-for n, N in zip(dimensions, N_pts):
-    total_pts    = N ** n
-    mem_bytes, t = hjb_grid_cost(n, N)
-    mem_mb       = mem_bytes / 1e6
-    t_str        = f"{t:.4f}" if t is not None else "OOM"
-    print(f"{n:>4} {N:>4} {total_pts:>15,} {mem_mb:>12.1f} {t_str:>10}")
-    results.append((n, N, total_pts, mem_mb, t))
+% # -- Plot: grid points vs state dimension -------------------------------------
+% ns    = [r[0] for r in results]
+% pts   = [r[2] for r in results]
+% times = [r[4] for r in results if r[4] is not None]
+% ns_t  = [r[0] for r in results if r[4] is not None]
 
-# -- Plot: grid points vs state dimension -------------------------------------
-ns    = [r[0] for r in results]
-pts   = [r[2] for r in results]
-times = [r[4] for r in results if r[4] is not None]
-ns_t  = [r[0] for r in results if r[4] is not None]
+% fig, axes = plt.subplots(1, 2, figsize=(12, 4))
 
-fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+% axes[0].semilogy(ns, pts, 'b-o', linewidth=2, markersize=6)
+% axes[0].set_xlabel('State dimension $n$')
+% axes[0].set_ylabel('Total grid points $N^n$')
+% axes[0].set_title('Grid size explosion with dimension')
+% axes[0].grid(True)
 
-axes[0].semilogy(ns, pts, 'b-o', linewidth=2, markersize=6)
-axes[0].set_xlabel('State dimension $n$')
-axes[0].set_ylabel('Total grid points $N^n$')
-axes[0].set_title('Grid size explosion with dimension')
-axes[0].grid(True)
+% axes[1].semilogy(ns_t, times, 'r-o', linewidth=2, markersize=6)
+% axes[1].set_xlabel('State dimension $n$')
+% axes[1].set_ylabel('Wall time (s), one HJB step')
+% axes[1].set_title('Computation time vs.\ dimension')
+% axes[1].grid(True)
 
-axes[1].semilogy(ns_t, times, 'r-o', linewidth=2, markersize=6)
-axes[1].set_xlabel('State dimension $n$')
-axes[1].set_ylabel('Wall time (s), one HJB step')
-axes[1].set_title('Computation time vs.\ dimension')
-axes[1].grid(True)
+% plt.tight_layout()
+% plt.savefig('hjb_cod.png', dpi=150)
+% plt.close()
 
-plt.tight_layout()
-plt.savefig('hjb_cod.png', dpi=150)
-plt.close()
-
-print("\nConclusion: both grid size and compute time grow as N^n.")
-print("For n=10, N=10: grid has 10^10 points, requiring ~80 GB.")
-print("Classical HJB is computationally dead beyond n ~ 6.")
-\end{verbatim}
+% print("\nConclusion: both grid size and compute time grow as N^n.")
+% print("For n=10, N=10: grid has 10^10 points, requiring ~80 GB.")
+% print("Classical HJB is computationally dead beyond n ~ 6.")
+% \end{verbatim}
 
 \medskip\hrule\medskip
 
@@ -1385,45 +1308,6 @@ PMP--HJB bridge in Step 12.
 
 \medskip\hrule\medskip
 
-\subsubsection{Defining the Optimized Hamiltonian}
-
-The right-hand side of equation \eqref{eq:hjb_inf} contains an optimization over
-$u$ that we can package into a single function. For any $(t, x) \in [0,T] \times
-\mathbb{R}^n$ and any covector $p \in \mathbb{R}^n$, define:
-
-\begin{equation}
-    H(t, x, p) = \sup_{u \in U}\, \mathcal{H}(t, x, p, u)
-    = \sup_{u \in U} \left[ -\langle p,\, f(t, x, u) \rangle
-    - L(t, x, u) \right].
-    \label{eq:H_def}
-\end{equation}
-
-The sign convention is critical and must be handled with care. The HJB equation
-\eqref{eq:hjb_inf} contains an $\inf_u$, whereas $H$ is defined via a $\sup_u$.
-These are consistent because of the minus signs in the control Hamiltonian
-$\mathcal{H} = -\langle p, f \rangle - L$: minimizing $L + \langle p, f \rangle$
-over $u$ is the same as maximizing $-L - \langle p, f \rangle = \mathcal{H}$ over
-$u$. That is:
-
-\begin{equation}
-    \inf_{u \in U} \left\{ L + \langle p, f \rangle \right\}
-    = -\sup_{u \in U} \left\{ -L - \langle p, f \rangle \right\}
-    = -H(t, x, p).
-\end{equation}
-
-Substituting into \eqref{eq:hjb_inf}, the HJB equation becomes:
-
-\begin{equation}
-    \boxed{-\frac{\partial \phi}{\partial t}(t, x)
-    + H(t, x, \nabla_x \phi(t, x)) = 0, \qquad \phi(T, x) = G(x).}
-    \label{eq:hjb_H}
-\end{equation}
-
-This is the compact Hamiltonian form of the HJB equation. It is a first-order
-nonlinear PDE in $(n+1)$ variables $(t, x_1, \ldots, x_n)$, solved backward in
-time from the terminal condition $\phi(T, \cdot) = G$.
-
-\medskip\hrule\medskip
 
 \subsubsection{The Legendre--Fenchel Connection}
 
@@ -1480,12 +1364,7 @@ Once $\phi$ is known, the optimal feedback control is recovered by:
 \end{equation}
 
 This is the central formula connecting the value function to the control policy.
-Its structure deserves careful reading. The gradient $\nabla_x \phi(t, x)$ plays
-the role of the costate $p_x$ --- we are maximizing the control Hamiltonian
-$\mathcal{H}$ with $p_x$ set equal to the gradient of the value function. This
-is the PMP--HJB connection appearing implicitly: the costate that PMP would
-assign to the optimal trajectory starting from $x$ at time $t$ is precisely
-$\nabla_x \phi(t, x)$. We will prove this rigorously in Step 12.
+Its structure deserves careful reading. 
 
 The formula \eqref{eq:ustar_hjb} defines a \textbf{true feedback law}: a map
 $(t, x) \mapsto u^\star$ that can be evaluated at any state at any time without
@@ -1500,66 +1379,6 @@ afflicts both PMP and HJB equally: \textbf{both frameworks require evaluating
 $\arg\sup_u \mathcal{H}$ to extract the optimal control from whatever
 representation of the solution they produce}. The paper's implicit solve addresses
 both simultaneously.
-
-\medskip\hrule\medskip
-
-\subsubsection{Characteristics of the HJB PDE}
-
-The HJB equation \eqref{eq:hjb_H} is a first-order PDE of the form:
-
-\begin{equation}
-    \phi_t + H(t, x, \nabla_x \phi) = 0.
-\end{equation}
-
-The \textbf{method of characteristics} is the standard analytical tool for
-first-order PDEs. It converts the PDE into a system of ODEs along special curves
---- the \textbf{characteristic curves} --- along which the PDE reduces to a
-total derivative. For a general first-order PDE $F(t, x, \phi, \phi_t,
-\nabla_x \phi) = 0$, the characteristic equations are:
-
-\begin{align}
-    \dot{t}   &= F_{\phi_t} = 1 \\
-    \dot{x}_i &= F_{\partial_{x_i}\phi} = \frac{\partial H}{\partial p_i} \\
-    \dot{p}_i &= -F_{x_i} - p_i F_\phi = -\frac{\partial H}{\partial x_i} \\
-    \dot{\phi} &= \phi_t \cdot F_{\phi_t}
-                + \sum_i \frac{\partial \phi}{\partial x_i} \cdot F_{p_i}
-                = -H + \langle p, \nabla_p H \rangle
-\end{align}
-
-where we write $p_i = \partial_{x_i}\phi$ for the $i$-th component of
-$\nabla_x \phi$. The first three equations give:
-
-\begin{equation}
-    \dot{x} = \nabla_p H(t, x, p), \qquad
-    \dot{p} = -\nabla_x H(t, x, p).
-    \label{eq:characteristics}
-\end{equation}
-
-These are \textbf{Hamilton's equations} for the optimized Hamiltonian $H$. The
-characteristics of the HJB PDE are exactly the Hamiltonian trajectories in the
-$(x, p)$ phase space, integrated under $H$. Since $H(t,x,p) = \sup_u
-\mathcal{H}(t,x,p,u) = \mathcal{H}(t,x,p,u^\star)$, we have:
-
-\begin{equation}
-    \nabla_p H = \nabla_p \mathcal{H}\big|_{u=u^\star}
-    = -f(t, x, u^\star), \qquad
-    \nabla_x H = \nabla_x \mathcal{H}\big|_{u=u^\star}.
-\end{equation}
-
-Substituting into \eqref{eq:characteristics}:
-
-\begin{equation}
-    \dot{x} = -\nabla_p \mathcal{H}(t, x, p, u^\star),
-    \qquad
-    \dot{p} = \nabla_x \mathcal{H}(t, x, p, u^\star).
-\end{equation}
-
-These are \textbf{precisely equations (3) and (4) of the paper} --- the PMP
-state and costate equations. The characteristics of the HJB PDE are the PMP
-optimal trajectories. This is the geometric content of the PMP--HJB equivalence:
-PMP trajectories are the curves along which the HJB PDE propagates information
-backward in time. We will exploit this identity formally in Step 12 to prove
-$p_x = \nabla_x \phi$ and in Step 13 to derive the implicit solve for $u^\star$.
 
 \medskip\hrule\medskip
 
@@ -2371,11 +2190,10 @@ temporal coupling explicit. Steps 16 and 17 develop the full gradient expression
 and identify the expensive term. Step 18 introduces JFB, proves it produces
 descent directions, and completes the paper's contribution.
 
+\pagebreak
+
 \section{Part IV --- Neural Network Approach and Jacobian-Free Backpropagation}
 
-Here are Steps 14 and 15 directly pastable into Overleaf:
-
-```latex
 \subsection{Step 14: Neural Network Parameterization of the Value Function}
 
 \medskip\hrule\medskip

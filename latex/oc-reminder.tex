@@ -2084,11 +2084,11 @@ the fixed-point iterations, which is the computational bottleneck that
 \textbf{Jacobian-Free Backpropagation} resolves.
 
 The remaining sections develop the training procedure in full, culminating in the
-JFB theorem and its proof. Section~\ref{sec:nn-param} introduces the neural network architecture
-and the training objective. Section~\ref{sec:training-temporal-coupling} defines the training loop and makes the
-temporal coupling explicit. Sections~\ref{sec:full-gradient} and~\ref{sec:jfb-descent} develop the full gradient expression
-and identify the expensive term. Section~\ref{sec:jfb} introduces JFB, proves it produces
-descent directions, and completes the paper's contribution.
+JFB theorem and its proof. Section~\ref{sec:nn-param} introduces the neural network
+architecture and the training objective. Section~\ref{sec:training-temporal-coupling}
+defines the training loop, derives the gradient split, and makes the temporal
+coupling explicit. Section~\ref{sec:jfb-descent} proves the descent direction
+theorem. Section~\ref{sec:jfb} presents the complete JFB algorithm.
 \end{tldrbox}
 
 \pagebreak
@@ -2141,67 +2141,25 @@ injecting the gradient signal into $\theta$ through $\phi_\theta$.
 \subsubsection{Why Neural Networks}
 
 \begin{extrainfobox}
-The value function $\phi(t,x)$ is a scalar field on the $(n+1)$-dimensional
-domain $[0,T] \times \mathbb{R}^n$. Classical methods represent it on a grid,
-which requires $O(N^n)$ storage and computation --- intractable for $n \gtrsim
-6$ as established in Section~\ref{sec:curse}. The fundamental issue is that any
-\textbf{fixed-basis representation} of a function on $\mathbb{R}^n$ --- grids,
-polynomial expansions, radial basis functions --- requires a number of basis
-elements that grows at least polynomially, and typically exponentially, with
-$n$.
-
-Neural networks sidestep this by learning a \textbf{data-adaptive basis}. A
-deep network $\phi_\theta : [0,T] \times \mathbb{R}^n \to \mathbb{R}$ with
-parameters $\theta \in \mathbb{R}^P$ represents $\phi$ as a composition of
-learned nonlinear transformations. Its evaluation cost is $O(P)$ regardless of
-$n$, and its expressivity --- the class of functions it can approximate --- grows
-with depth and width in ways that do not suffer the same exponential dependence
-on $n$ as fixed-basis methods. The universal approximation theorem guarantees
-that sufficiently wide networks can approximate any continuous function on a
-compact domain to arbitrary accuracy, and deeper networks can do so with
-exponentially fewer parameters than shallow ones for structured functions.
-
-For optimal control, neural networks have an additional advantage: the gradient
-$\nabla_x \phi_\theta(t,x)$ is obtained for free by automatic differentiation
-through the network's forward pass. This gradient is needed both for the costate
-substitution $p_x = \nabla_x\phi_\theta$ and for the fixed-point iteration.
-In a grid-based method, computing $\nabla_x\phi$ requires finite differences
-involving $2n$ neighboring grid points --- another $O(n)$ factor on top of the
-grid cost. With a network, it costs the same as one forward pass.
+Classical grid-based representations of $\phi(t,x)$ require $O(N^n)$ storage
+--- intractable for $n \gtrsim 6$ (Section~\ref{sec:curse}). A neural network
+$\phi_\theta : [0,T] \times \mathbb{R}^n \to \mathbb{R}$ with parameters
+$\theta \in \mathbb{R}^P$ sidesteps this: evaluation costs $O(P)$ regardless
+of $n$, and the gradient $\nabla_x\phi_\theta$ needed for the costate
+substitution and the fixed-point iteration is obtained for free via autodiff
+through the forward pass.
 \end{extrainfobox}
 
 \medskip\hrule\medskip
 
 \subsubsection{The Network Architecture}
 
-The paper parameterizes the value function as a neural network:
-
-\begin{equation}
-    \phi_\theta : [0,T] \times \mathbb{R}^n \to \mathbb{R}
-\end{equation}
-
-with input $(t, x) \in \mathbb{R}^{n+1}$ and scalar output $\phi_\theta(t,x)
-\approx \phi(t,x)$. The parameters $\theta \in \mathbb{R}^P$ are the weights
-and biases of all layers. We write the network as:
-
-\begin{equation}
-    \phi_\theta(t,x) = \mathcal{N}_\theta(t, x)
-\end{equation}
-
-where $\mathcal{N}_\theta$ denotes the composition of $L$ layers:
-
-\begin{equation}
-    \mathcal{N}_\theta = W_L \circ \sigma \circ W_{L-1}
-    \circ \cdots \circ \sigma \circ W_1
-\end{equation}
-
-with weight matrices $W_k$ and pointwise nonlinearity $\sigma$. The choice of
-$\sigma$ matters: since we need $\nabla_x\phi_\theta$ for the costate
-substitution and fixed-point iteration, the network must be at least $C^1$ in its
-inputs. This rules out ReLU activations (which are not differentiable at zero)
-in favor of smooth activations such as $\tanh$, softplus, or sinusoidal
-activations (as used in SIREN architectures). The paper uses $\tanh$ activations
-throughout.
+The paper parameterizes $\phi$ as a deep network
+$\phi_\theta : [0,T] \times \mathbb{R}^n \to \mathbb{R}$ with parameters
+$\theta \in \mathbb{R}^P$. Since we need $\nabla_x\phi_\theta$ for the
+costate substitution and fixed-point iteration, the network must be at least
+$C^1$ in its inputs. This rules out ReLU in favor of smooth activations;
+the paper uses $\tanh$ throughout.
 
 \textbf{Enforcing the terminal condition.} The terminal condition $\phi(T,x) =
 G(x)$ must be satisfied by $\phi_\theta$. There are two approaches. The first
@@ -2393,9 +2351,6 @@ Note that the HJB residual $\mathcal{R}(t,z;\theta)$ and adjoint residual are
 also computed along each trajectory and logged, but with zero weight in
 $\mathcal{L}(\theta)$. They serve as diagnostic metrics only.
 
-The structure of $\nabla_\theta\mathcal{L}$ and why it is expensive to compute
-exactly is developed in full in Section~\ref{sec:full-gradient}.
-
 \medskip\hrule\medskip
 
 \subsubsection{The Cost of Term II: Why Temporal Coupling Is Expensive}
@@ -2472,29 +2427,10 @@ gradient is dominated by the second-order autodiff required by
 \eqref{eq:dustar_dtheta}. For networks with $P = 10^5$ parameters, this is
 simply not feasible.
 
-\medskip\hrule\medskip
-
-\subsubsection{Temporal Coupling: A Summary}
-
-\begin{extrainfobox}
-The temporal coupling problem can be stated precisely in one sentence: the
-trajectories along which the control objective $\mathcal{L}(\theta)$ is
-evaluated depend on $\theta$, so $\nabla_\theta\mathcal{L}(\theta)$ has two
-terms, and the second term (Term~II) requires second-order autodiff through
-$\phi_\theta$ at every time step of every trajectory, making exact gradient
-computation intractable for neural networks with more than a few thousand
-parameters.
-
-This is not a problem specific to implicit Hamiltonians. It afflicts any
-method that generates training trajectories under the current policy and then
-differentiates through those trajectories. What the implicit Hamiltonian adds
-is an additional layer of coupling: $u^\star$ depends on $\theta$ not only
-through $\phi_\theta$ evaluated at the trajectory points, but also through the
-fixed-point solve, which itself depends on $\nabla_x\phi_\theta$ via
-\eqref{eq:dustar_dtheta}. The JFB approach of Section~\ref{sec:jfb} addresses both layers
-simultaneously by dropping Term II entirely and showing that Term I alone is
-sufficient for convergence.
-\end{extrainfobox}
+For implicit Hamiltonians, the coupling has an additional layer: $u^\star$
+depends on $\theta$ not only through $\phi_\theta$ at the trajectory points,
+but also through the fixed-point solve via \eqref{eq:dustar_dtheta}. The JFB
+approach of Section~\ref{sec:jfb} addresses both layers simultaneously.
 
 \medskip\hrule\medskip
 
@@ -2524,16 +2460,10 @@ every sample point as part of the loss itself, not just during trajectory
 generation.
 \end{extrainfobox}
 
-
-\subsection{The Gradient of the Control Objective and Its Two Terms}
-\label{sec:full-gradient}
-
 \medskip\hrule\medskip
 
-\subsubsection{Consolidating the Gradient Split}
-
-We now derive the gradient $d\mathcal{L}/d\theta$ of the control objective and
-identify the two-term structure that motivates JFB.
+\subsubsection{The Two-Term Gradient Split}
+\label{sec:full-gradient}
 
 For a single trajectory starting from $x$, discretize time as $0 = t_0 <
 t_1 < \cdots < t_M = T$ with step size $h = T/M$. Write
@@ -2648,75 +2578,27 @@ the descent-direction theorem in Section~\ref{sec:jfb-descent}.
 
 \medskip\hrule\medskip
 
-\subsubsection{Setup and Statement}
+\subsubsection{Statement and Proof}
 
 \begin{mathrequirementsbox}
-We now state and prove the paper's central theoretical result: that the JFB
 \label{thm:jfb-descent}
-gradient $\widetilde{\nabla}_\theta\mathcal{L}$ --- Term I of
-\eqref{eq:full_gradient} --- is a descent direction for the true loss
-$\mathcal{L}(\theta)$. This means:
-
-\begin{equation}
-    \left\langle \widetilde{\nabla}_\theta\mathcal{L},\;
-    \nabla_\theta\mathcal{L} \right\rangle > 0
-    \label{eq:descent_condition}
-\end{equation}
-
-so that the update $\theta \leftarrow \theta - \eta
-\widetilde{\nabla}_\theta\mathcal{L}$ decreases $\mathcal{L}$ for sufficiently
-small $\eta > 0$.
-
-To state the result cleanly, introduce the following notation. At a fixed
-parameter $\theta$, write the full gradient as:
-
-\begin{equation}
-    \nabla_\theta\mathcal{L} = \widetilde{\nabla}_\theta\mathcal{L} + E(\theta)
-\end{equation}
-
-where $E(\theta)$ is Term II --- the trajectory coupling term. The descent
-condition \eqref{eq:descent_condition} is equivalent to:
-
-\begin{equation}
-    \left\langle \widetilde{\nabla}_\theta\mathcal{L},\;
-    \widetilde{\nabla}_\theta\mathcal{L} + E(\theta) \right\rangle > 0
-    \quad \Longleftrightarrow \quad
-    \|\widetilde{\nabla}_\theta\mathcal{L}\|^2
-    + \left\langle \widetilde{\nabla}_\theta\mathcal{L},\,
-    E(\theta) \right\rangle > 0.
-    \label{eq:descent_expanded}
-\end{equation}
-
-This holds whenever:
+The paper's central theoretical result is that the JFB gradient
+$\widetilde{\nabla}_\theta\mathcal{L}$ --- Term~I of
+\eqref{eq:full_gradient} --- is a descent direction for
+$\mathcal{L}(\theta)$, meaning the update
+$\theta \leftarrow \theta - \eta\,\widetilde{\nabla}_\theta\mathcal{L}$
+decreases $\mathcal{L}$ for sufficiently small $\eta$. Writing
+$\nabla_\theta\mathcal{L} = \widetilde{\nabla}_\theta\mathcal{L} + E(\theta)$
+where $E(\theta)$ is Term~II, a sufficient condition by Cauchy--Schwarz is:
 
 \begin{equation}
     \|E(\theta)\| < \|\widetilde{\nabla}_\theta\mathcal{L}\|
     \label{eq:norm_condition}
 \end{equation}
 
-since by Cauchy--Schwarz $|\langle \widetilde{\nabla}_\theta\mathcal{L},
-E(\theta)\rangle| \leq \|\widetilde{\nabla}_\theta\mathcal{L}\|\,
-\|E(\theta)\|$, and if \eqref{eq:norm_condition} holds then:
+The paper proves a stronger result: the inner product is strictly positive
+without bounding $\|E\|$ directly.
 
-\begin{equation}
-    \|\widetilde{\nabla}_\theta\mathcal{L}\|^2
-    + \langle \widetilde{\nabla}_\theta\mathcal{L}, E(\theta)\rangle
-    \geq \|\widetilde{\nabla}_\theta\mathcal{L}\|^2
-    - \|\widetilde{\nabla}_\theta\mathcal{L}\|\,\|E(\theta)\|
-    = \|\widetilde{\nabla}_\theta\mathcal{L}\|
-    \left(\|\widetilde{\nabla}_\theta\mathcal{L}\| - \|E(\theta)\|\right)
-    > 0.
-\end{equation}
-
-The question is therefore: when is $\|E(\theta)\| 
-\|\widetilde{\nabla}_\theta\mathcal{L}\|$?
-\end{mathrequirementsbox}
-
-\medskip\hrule\medskip
-
-\subsubsection{Bounding the Error Term}
-
-\begin{mathrequirementsbox}
 From \eqref{eq:full_gradient} and \eqref{eq:traj_jacobian}, Term~II satisfies:
 
 \begin{equation}
@@ -2783,6 +2665,16 @@ is a descent direction for $\mathcal{J}_x(\theta)$ because its inner product
 with the true gradient $-d\mathcal{J}/d\theta$ is positive. The proof is
 finite-time and algebraic --- there is no discretization $\Delta t$ and no
 asymptotic argument.
+
+\textbf{Connection to prior JFB results.} The name ``Jacobian-Free
+Backpropagation'' originates in implicit neural networks (Fung et al., 2022),
+where it refers to the same stop-gradient idea applied to static
+fixed-point layers. The descent direction proof in the optimal control
+context is new: the error term $E(\theta)$ involves the trajectory
+Jacobian --- a dynamical systems quantity with no analogue in the static
+setting --- so the pointwise inner product bound \eqref{eq:pointwise_bound}
+and its lift to the integrated gradient (Theorem~1) are a genuine
+contribution of the paper.
 \end{mathrequirementsbox}
 
 \medskip\hrule\medskip
@@ -2790,7 +2682,7 @@ asymptotic argument.
 \subsubsection{Implications for Training}
 
 \begin{mathrequirementsbox}
-The descent direction result has three concrete implications for the training
+The descent direction result has two concrete implications for the training
 procedure.
 
 \textbf{Convergence.} Gradient descent with step size $\eta$ satisfying the
@@ -2806,40 +2698,7 @@ with the critical points of $\mathcal{L}$ under condition
 \eqref{eq:norm_condition}. The JFB approximation therefore does not
 introduce spurious fixed points --- any parameter $\theta$ where JFB
 training stalls is also a stall point of exact gradient descent.
-
-\textbf{Cost reduction.} JFB reduces the per-iteration gradient computation
-from $O(mPM)$ (exact, dominated by the IFT term) to $O(PM)$ (JFB, standard
-autodiff through the network at fixed trajectory points). For $m \geq 2$
-and large $P$, this is a factor of $m$ to $m^2$ reduction, which in
-practice means JFB is feasible on a single GPU where exact backpropagation
-is not.
 \end{mathrequirementsbox}
-
-\medskip\hrule\medskip
-
-\subsubsection{Connection to Prior JFB Results}
-
-\begin{extrainfobox}
-The name \textbf{Jacobian-Free Backpropagation} was introduced in the
-context of implicit neural networks by Fung et al.\ (2022), where it refers
-to the same stop-gradient idea applied to fixed-point layers: instead of
-differentiating through the fixed-point iteration to convergence (which
-requires the IFT), one differentiates only through the loss at the fixed
-point, treating the fixed-point solution as a constant. The paper adapts
-this idea to the optimal control setting, where the ``fixed-point layer''
-is the gradient ascent solve for $u^\star$ and the ``implicit network'' is the
-composition of $\phi_\theta$ with the fixed-point iterations.
-
-The descent direction proof in the optimal control context is new to the
-paper and is not a direct consequence of prior JFB results, because the
-error term $E(\theta)$ in the optimal control setting involves the trajectory
-Jacobian --- a dynamical systems quantity with no analogue in the static
-implicit network setting. The pointwise inner product bound
-\eqref{eq:pointwise_bound} and its lift to the integrated gradient
-(Theorem~1) are therefore a genuine contribution of the paper, providing the
-first theoretical guarantee for JFB applied to trajectory optimization with
-implicit Hamiltonians.
-\end{extrainfobox}
 
 
 \subsection{Jacobian-Free Backpropagation --- The Complete Algorithm}
@@ -2849,30 +2708,13 @@ implicit Hamiltonians.
 
 \subsubsection{Defining JFB Precisely}
 
-Section~\ref{sec:jfb-descent} established that Term I of the gradient split \eqref{eq:full_gradient}
-is a descent direction under mild conditions. We now define JFB precisely as
-an algorithmic operation, show exactly where the stop-gradient appears in the
-computational graph, and present the complete training algorithm that constitutes
-the paper's method.
-
-Recall the training loss \eqref{eq:training_loss}: the control objective
-accumulated along rolled-out trajectories. The cost at each time step depends
-on $\theta$ through two channels:
-
-\begin{enumerate}
-    \item \textbf{Explicitly}: through $u^\star_k(\theta)$, which depends on
-          $\nabla_z\phi_\theta(t_k, z_k)$ via the fixed-point iteration $T_\theta$.
-    \item \textbf{Implicitly}: through $z_k = z_{x_i}(t_k;\theta)$, the
-          trajectory state itself, which depends on $\theta$ through the
-          controlled dynamics at all preceding time steps.
-\end{enumerate}
-
-JFB is the operation of \textbf{blocking the gradient through channel 2}
-while keeping channel 1. Concretely, define the \textbf{stopped trajectory}
-$\bar{z}_{x_i}(t_k) = \texttt{stop\_grad}(z_{x_i}(t_k;\theta))$: the
-trajectory is simulated using the current $\theta$ to generate the states,
-but these states are treated as fixed constants with zero gradient for the
-purpose of backpropagation. The JFB loss is then:
+The cost at each time step depends on $\theta$ through two channels:
+(1)~\textbf{explicitly}, through $u^\star_k(\theta)$ which depends on
+$\nabla_z\phi_\theta$ via $T_\theta$; and
+(2)~\textbf{implicitly}, through the trajectory state $z_k$ itself, which
+depends on $\theta$ through all preceding controls. JFB blocks channel~2 by
+applying \texttt{stop\_grad} to the trajectory states, keeping only channel~1.
+The JFB loss is:
 
 \begin{equation}
     \widetilde{\mathcal{L}}(\theta)
@@ -2883,29 +2725,12 @@ purpose of backpropagation. The JFB loss is then:
     \label{eq:jfb_loss}
 \end{equation}
 
-where $\bar{z}_{x_i}(t_k) = \texttt{stop\_grad}(z_{x_i}(t_k;\theta))$ are
-the stopped trajectory states, and $u^\star_k(\theta)$ is computed via the
-$K'$ tracked gradient steps of $T_\theta$ starting from the converged fixed
-point.
-
-The JFB gradient $\widetilde{\nabla}_\theta\mathcal{L} =
-\nabla_\theta\widetilde{\mathcal{L}}(\theta)$ is computed by autodiff through
-the $K'$ tracked applications of $T_\theta$ at each time step, treating the
-trajectory states $\bar{z}_k$ as constants. Concretely: at each step, the
-fixed-point iteration runs without gradient tracking to convergence, then $K'$
-additional applications of $T_\theta$ are executed with gradient tracking, and
-the cost $L(t_k, \bar{z}_k, u^\star_k)$ is accumulated. The gradient flows
-through $\phi_\theta$ via $\nabla_z\phi_\theta$ inside $T_\theta$, but not
-through the trajectory states themselves. This is Term~I of
+where $\bar{z}_{x_i}(t_k) = \texttt{stop\_grad}(z_{x_i}(t_k;\theta))$.
+The stop-gradient applies at two levels: trajectory states $\bar{z}_k$ are
+detached (blocking channel~2), and the convergence phase of the fixed-point
+iteration is not differentiated through --- only the final $K'$ tracked
+applications of $T_\theta$ carry gradient. This is Term~I of
 \eqref{eq:full_gradient} exactly.
-
-The stop-gradient applies at two levels: (1) the trajectory states
-$\bar{z}_k$ are detached, blocking the trajectory coupling (channel~2), and
-(2) the convergence phase of the fixed-point iteration is not differentiated
-through --- only the final $K'$ applications of $T_\theta$ carry gradient.
-This is the two-layer JFB approximation handling both the trajectory coupling
-and the implicit Hamiltonian coupling identified in
-Section~\ref{sec:training-temporal-coupling}. Next comes the full algorithm.
 
 \subsubsection{Complete algorithm}
 
@@ -2959,34 +2784,15 @@ Section~\ref{sec:training-temporal-coupling}. Next comes the full algorithm.
 
 \subsubsection{Computational Cost Per Iteration}
 
-The cost of one iteration of the algorithm above breaks down as follows.
+The dominant cost per iteration is $O(B \cdot M \cdot P)$ --- linear in batch
+size $B$, time steps $M$, and parameters $P$. The fixed-point iterations add
+$O(KBMm)$, which is negligible for $m \ll P$. This is the same cost as
+training a standard neural network on $BM$ fixed data points.
 
-\textbf{Trajectory generation.} For each of $B$ trajectories with
-$M$ time steps, each step requires one forward pass and one backward pass
-through $\phi_\theta$ for $\nabla_x\phi_\theta$, plus $K$ fixed-point iterations
-each costing $O(m)$ (one gradient evaluation of $\nabla_u\mathcal{H}$ per step). Total cost:
-$O(B \cdot M \cdot (P + K m))$.
-
-\textbf{Cost evaluation.} For each of $BM$ stopped trajectory points,
-evaluate $u^\star_k$ via $K'$ tracked fixed-point steps (each $O(m)$),
-then evaluate $L(t_k, \bar{z}_k, u^\star_k)$. Total cost:
-$O(B \cdot M \cdot (P + K'm))$.
-
-\textbf{Backpropagation.} Standard autodiff through $\phi_\theta$
-at $BM$ fixed points. Total cost: $O(B \cdot M \cdot P)$.
-
-The dominant cost is $O(B \cdot M \cdot P)$ --- linear in all of $B$, $M$,
-and $P$. This is identical to the cost of training a neural network on a
-fixed dataset of $BM$ points, with the only overhead being the fixed-point
-iterations ($O(KBMm)$, small for $m \ll P$) and the trajectory generation (which does
-not require gradient tracking and can be parallelized over $B$).
-
-Compare with exact backpropagation: the adjoint method would add
-$O(B \cdot M \cdot m \cdot P)$ for the IFT term \eqref{eq:dustar_dtheta},
-and the sensitivity ODE would add $O(B \cdot M \cdot n \cdot P)$ for the
-trajectory Jacobian. Both are factors of $m$ or $n$ more expensive than JFB.
+Compare with exact backpropagation: the adjoint method adds
+$O(B \cdot M \cdot m \cdot P)$ for the IFT term \eqref{eq:dustar_dtheta}.
 For $n = 20$, $m = 2$, $P = 10^5$, JFB is approximately 20 times cheaper
-than the adjoint method per iteration.
+per iteration.
 
 \medskip\hrule\medskip
 
@@ -3015,44 +2821,6 @@ policy for all initial conditions is encoded in $\theta^\star$.
 
 \subsection{Synthesis: The Complete Contribution}
 \label{sec:synthesis}
-
-\medskip\hrule\medskip
-
-\subsubsection{What Each Part Built}
-
-This document has developed the paper's contribution from first principles
-through four parts, each building on the last.
-
-\textbf{Part I} derived PMP from the augmented action principle, producing
-\eqref{eq:pmp-state-tagged}, \eqref{eq:pmp-costate-tagged}, and \eqref{eq:pmp-max-tagged}. It identified the two-point BVP
-structure, the shooting method, and its failure modes: exponential
-conditioning with horizon and the requirement for a closed-form $u^\star =
-g(t, z_x, p_x)$ to close the ODE system.
-
-\textbf{Part II} derived the HJB equation from Bellman's principle, defined
-the optimized Hamiltonian $H$, and established the feedback law
-$u^\star = \arg\sup_u\mathcal{H}(t,x,\nabla_x\phi,u)$. It identified the
-curse of dimensionality as the failure mode of grid-based HJB, and
-established that PMP and HJB trade one exponential for another --- neither
-dominates.
-
-\textbf{Part III} proved the PMP--HJB bridge $p_x^\star =
-\nabla_x\phi(t,z_x^\star(t))$ via the method of characteristics and the
-Picard--Lindelöf uniqueness argument. It identified the symplectic structure
-underlying the bridge, explained why value function parameterization
-automatically respects this structure while direct policy parameterization
-does not, and showed precisely why prior neural HJB methods still required
-explicit Hamiltonians despite knowing this identity.
-
-\textbf{Part IV} introduced the neural network parameterization
-$\phi_\theta$, the control objective $J(\theta)$, and the trajectory rollout
-training procedure. It identified that training on $J(\theta)$ via trajectory
-rollout creates temporal coupling --- each trajectory state $z_k$ depends on
-all preceding controls, which depend on $\theta$ --- making exact gradient
-computation intractable. It split the gradient into Term~I and Term~II,
-established a pointwise inner product bound between the true and JFB gradient
-integrands, lifted it to the time-integrated gradient via Lemma~4, proved the
-descent direction theorem (Theorem~1), and presented the complete JFB algorithm.
 
 \medskip\hrule\medskip
 
@@ -3086,24 +2854,13 @@ $O(BmMP)$ backpropagation to $O(BMP)$ autodiff while preserving the descent
 direction guarantee. Without JFB, the training loop is computationally
 intractable for networks with more than a few thousand parameters.
 
-\medskip\hrule\medskip
+\medskip
 
-\subsubsection{The Precise Gap Filled}
-
-The paper fills a gap that can be stated in one sentence: \textit{no prior
-method could learn a feedback controller for high-dimensional optimal control
-problems with implicit Hamiltonians, because all value-function methods
-required a closed-form $u^\star = g(t,z_x,\nabla_x\phi)$ and all direct
-policy methods ignored the Hamiltonian structure needed to handle the
-implicit case.}
-
-The paper fills this gap by combining the three ingredients above into a
-single end-to-end trainable architecture. The mathematical foundation ---
-PMP, HJB, and their bridge --- is classical. The neural network
-approximation of $\phi$ is established. The JFB idea is adapted from
-implicit neural networks. The contribution is the specific combination and
-the theoretical guarantee (the descent direction theorem) that makes the
-combination provably convergent.
+In one sentence: \textit{no prior method could learn a feedback controller
+for high-dimensional optimal control problems with implicit Hamiltonians,
+because all value-function methods required a closed-form
+$u^\star = g(t,z_x,\nabla_x\phi)$ and all direct policy methods ignored
+the Hamiltonian structure needed to handle the implicit case.}
 
 \medskip\hrule\medskip
 
@@ -3132,6 +2889,5 @@ the cost of each gradient ascent step is $O(m)$, but more iterations may be
 needed for convergence (larger contraction constant $\gamma$).
 The paper demonstrates the method for $m = 1$ (space shuttle) and $m = 2$
 (bicycle); scaling to $m \sim 10$ or higher remains to be demonstrated.
-```
 
 \end{document}

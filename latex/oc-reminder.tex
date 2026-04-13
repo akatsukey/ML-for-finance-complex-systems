@@ -1709,7 +1709,7 @@ without solving any BVP. The optimal control is then:
     \mathcal{H}(t, z_x, \nabla_x\phi_\theta(t, z_x), u)
 \end{equation}
 
-evaluated via Newton's method when no closed form exists. This is the paper's
+evaluated via the fixed-point iteration when no closed form exists. This is the paper's
 method in one equation.
 
 \textbf{What it does not give.} The identity holds \textit{along optimal
@@ -1730,7 +1730,7 @@ Substituting $p_x = \nabla_x\phi_\theta$ into the explicit formula $g$ is
 straightforward. Without a closed form, the substitution produces an implicit
 equation for $u^\star$ that those methods had no machinery to solve inside the
 training loop. The paper's contribution is precisely the addition of the implicit
-solve via Newton's method and the JFB gradient approximation that makes
+solve via the fixed-point iteration and the JFB gradient approximation that makes
 differentiating through that solve tractable.
 
 \medskip\hrule\medskip
@@ -1795,7 +1795,7 @@ What was \textit{not} done before the paper is to exploit this identity inside
 a neural network training loop for problems with \textbf{implicit Hamiltonians}.
 This step makes precise exactly what changes when the Hamiltonian is implicit,
 why the identity alone is insufficient without an implicit solve, and how
-Newton's method fills the gap. This is the last purely mathematical step before
+the fixed-point iteration fills the gap. This is the last purely mathematical step before
 Part IV, where the full neural network architecture and training procedure are
 developed.
 \end{tldrbox}
@@ -1933,49 +1933,63 @@ parameter --- which is expensive and is precisely what
 
 \medskip\hrule\medskip
 
-\subsubsection{Newton's Method as the Inner Solve}
+\subsubsection{The Fixed-Point Iteration as the Inner Solve}
 
 \begin{compnumissuesbox}
 Given the guarantee from the IFT that $u^\star$ exists and is unique under
-strict concavity, we solve \eqref{eq:fixed_point} using Newton's method. Starting
-from an initial guess $u^{(0)}$ (e.g., the solution from the previous time step,
-or zero), iterate:
+strict concavity, we solve \eqref{eq:fixed_point} using \textbf{gradient ascent}
+as a fixed-point iteration. Define the operator:
 
 \begin{equation}
-    u^{(k+1)} = u^{(k)}
-    - \left[\nabla^2_{uu}\mathcal{H}(t, z_x, \nabla_x\phi_\theta, u^{(k)})
-    \right]^{-1}
-    \nabla_u \mathcal{H}(t, z_x, \nabla_x\phi_\theta, u^{(k)})
-    \label{eq:newton}
+    T_\theta(u;\, t, z_x)
+    = u + \alpha\, \nabla_u \mathcal{H}(t, z_x, \nabla_x\phi_\theta(t, z_x), u)
+    \label{eq:fixed_point_iter}
 \end{equation}
 
-until $\|\nabla_u \mathcal{H}\| < \varepsilon_{\text{tol}}$ for some tolerance
-$\varepsilon_{\text{tol}}$. Under strict concavity and a good initial guess,
-Newton's method converges \textbf{quadratically}: the error satisfies
-$\|u^{(k+1)} - u^\star\| \leq C \|u^{(k)} - u^\star\|^2$ for some constant
-$C > 0$. In practice, this means 3--5 iterations are sufficient to reach
-machine precision from a reasonable initialization.
+for a step size $\alpha > 0$. The fixed point $u^\star$ of $T_\theta$ satisfies
+$T_\theta(u^\star) = u^\star$, which is equivalent to $\nabla_u \mathcal{H}
+= 0$. Starting from an initial guess $u^{(0)}$ (e.g., zero), iterate:
 
-Several practical points about the Newton solve deserve attention.
+\begin{equation}
+    u^{(k+1)} = T_\theta(u^{(k)}) = u^{(k)}
+    + \alpha\, \nabla_u \mathcal{H}(t, z_x, \nabla_x\phi_\theta, u^{(k)})
+    \label{eq:gd_iter}
+\end{equation}
 
-\textbf{Warm starting.} Along a trajectory, consecutive time steps have nearby
-states $(t, z_x)$ and hence nearby optimal controls. Using the solution $u^\star$
-from the previous time step as the initial guess $u^{(0)}$ for the current step
-dramatically reduces the number of Newton iterations needed --- typically to
-1--2 near the optimal trajectory. This makes the amortized cost of the implicit
-solve negligible compared to the ODE integration cost.
+until $\|u^{(k+1)} - u^{(k)}\| < \varepsilon_{\text{tol}}$ (or a maximum of $K$
+steps). Convergence is guaranteed by the paper's \textbf{Assumption~1}:
+$T_\theta$ is $\gamma$-contractive with $\gamma < 1$ for sufficiently small
+$\alpha$, so the iterates converge \textbf{linearly} to $u^\star$ at rate
+$\gamma$:
+$\|u^{(k)} - u^\star\| \leq \gamma^k \|u^{(0)} - u^\star\|$.
+The paper uses $K = 200$ with tolerance $10^{-3}$ or $10^{-4}$ depending on
+the problem (see the experimental setup sections).
 
-\textbf{Computing $\nabla^2_{uu}\mathcal{H}$.} The Hessian $\nabla^2_{uu}
-\mathcal{H}$ is an $m \times m$ matrix. For $m$ small (as in most physical
-control problems --- thrust, steering angle, bank angle are typically
-low-dimensional), this is cheap to compute and invert. For larger $m$, one
-can use quasi-Newton methods (BFGS or L-BFGS) that approximate the Hessian
-inverse without forming it explicitly, at the cost of slower convergence.
+Note that this iteration requires only the \textbf{first derivative}
+$\nabla_u \mathcal{H}$, not the Hessian $\nabla^2_{uu}\mathcal{H}$. The code
+initializes $u^{(0)} = 0$ at every time step (cold start); no warm-starting
+is used.
 
-\textbf{Dependence on $\nabla_x\phi_\theta$.} The Newton iterate
-\eqref{eq:newton} depends on $\nabla_x\phi_\theta(t, z_x)$, which is obtained
+\textbf{Classical alternative: Newton's method.} A classical approach to solving
+$\nabla_u \mathcal{H} = 0$ is Newton's method:
+$u^{(k+1)} = u^{(k)} - [\nabla^2_{uu}\mathcal{H}]^{-1}\, \nabla_u \mathcal{H}$.
+This converges quadratically but requires computing and inverting the $m \times m$
+Hessian $\nabla^2_{uu}\mathcal{H}$ at each step. The paper does \textit{not} use
+Newton's method for the forward solve --- it uses the gradient ascent operator
+\eqref{eq:gd_iter} instead.
+
+\textbf{Where the Hessian does appear.} The Hessian $\nabla^2_{uu}\mathcal{H}$
+appears legitimately in the \textit{exact gradient} of $u^\star$ with respect to
+$\theta$ via the IFT: $\partial u^\star / \partial\theta = -[\nabla^2_{uu}
+\mathcal{H}]^{-1}\, \nabla^2_{u,\theta}\mathcal{H}$ (equation
+\eqref{eq:IFT_derivative}). This is part of Term~II --- the expensive gradient
+term that JFB avoids computing. The Hessian is needed for the \textit{backward
+pass} (exact differentiation), not the \textit{forward solve}.
+
+\textbf{Dependence on $\nabla_x\phi_\theta$.} The iterate
+\eqref{eq:gd_iter} depends on $\nabla_x\phi_\theta(t, z_x)$, which is obtained
 by differentiating the network with respect to its input $x$. This is a standard
-autodiff operation. Crucially, the Newton iteration itself is \textit{not}
+autodiff operation. Crucially, the fixed-point iteration itself is \textit{not}
 differentiated through during training --- this is the stop-gradient operation
 that defines JFB and is justified in Section~\ref{sec:jfb}.
 \end{compnumissuesbox}
@@ -2004,10 +2018,12 @@ with the implicit solve:
     \item \textbf{Set costate:} $p_x \leftarrow \nabla_x\phi_\theta(t, z_x)$
           via the bridge identity of Section~\ref{sec:bridge}.
 
-    \item \textbf{Newton solve:} iterate \eqref{eq:newton} until convergence
-          to obtain $u^\star$. Cost: $K$ Newton steps, each requiring one
-          evaluation of $\nabla_u\mathcal{H}$ and one $m \times m$ linear
-          solve. Typically $K \leq 5$.
+    \item \textbf{Fixed-point solve:} iterate $u \leftarrow u + \alpha\,
+          \nabla_u\mathcal{H}(t, z_x, p_x, u)$ until
+          $\|u_{\text{new}} - u_{\text{old}}\| < \varepsilon_{\text{tol}}$.
+          Convergence guaranteed by $\gamma$-contractivity of $T_\theta$
+          (Assumption~1). Cost: $K$ iterations, each $O(m)$ for the
+          gradient evaluation.
 
     \item \textbf{Return $u^\star$} to the ODE integrator for the dynamics step
           $\dot{z}_x = f(t, z_x, u^\star)$.
@@ -2017,11 +2033,9 @@ with the implicit solve:
 
 This pipeline replaces the single closed-form evaluation $u^\star =
 g(t, z_x, \nabla_x\phi_\theta)$ of the explicit case with a short iterative
-loop, at a cost that is $O(K \cdot m^3)$ per control evaluation (dominated by
-the $m \times m$ linear solve in each Newton step). For the physical problems
-the paper considers --- space shuttle ($m = 1$), bicycle ($m = 2$) --- this cost
-is negligible. For larger $m$, quasi-Newton approximations keep the cost
-manageable.
+loop, at a cost that is $O(K \cdot m)$ per control evaluation (one gradient
+evaluation per step). For the physical problems the paper considers --- space
+shuttle ($m = 1$), bicycle ($m = 2$) --- this cost is negligible.
 \end{tldrbox}
 
 \medskip\hrule\medskip
@@ -2036,28 +2050,27 @@ the true value function.
 
 Training requires:
 \begin{enumerate}
-    \item A \textbf{loss function} that measures how well $\phi_\theta$
-          satisfies the HJB equation.
-    \item A source of \textbf{training data} --- states $(t, z_x)$ at which
-          to evaluate the HJB residual, typically generated by simulating
-          trajectories under the current $u^\star(\cdot;\theta)$.
-    \item A \textbf{gradient computation} --- the derivative of the loss
-          with respect to $\theta$, used to update $\theta$ via gradient
-          descent.
+    \item A \textbf{loss function} --- the control objective $J(\theta)$,
+          the expected cost of trajectories rolled out under the current policy.
+    \item A source of \textbf{training data} --- trajectories generated by
+          simulating the controlled dynamics under the current
+          $u^\star(\cdot;\theta)$.
+    \item A \textbf{gradient computation} --- the derivative of $J$ with
+          respect to $\theta$, used to update $\theta$ via gradient descent.
 \end{enumerate}
 
 The first two are straightforward. The third is where the \textbf{temporal
 coupling} problem arises: the training trajectories depend on $\theta$ (because
 $u^\star$ depends on $\phi_\theta$), so the gradient of the loss with respect
-to $\theta$ has two terms --- one explicit (through the HJB residual holding
-trajectories fixed) and one implicit (through how the trajectories change with
-$\theta$). The implicit term requires differentiating through the ODE solver and
-through the Newton iterations, which is the computational bottleneck that
+to $\theta$ has two terms --- one explicit (through the cost at fixed trajectory
+points) and one implicit (through how the trajectories change with $\theta$).
+The implicit term requires differentiating through the ODE solver and through
+the fixed-point iterations, which is the computational bottleneck that
 \textbf{Jacobian-Free Backpropagation} resolves.
 
 The remaining sections develop the training procedure in full, culminating in the
 JFB theorem and its proof. Section~\ref{sec:nn-param} introduces the neural network architecture
-and the HJB residual loss. Section~\ref{sec:training-temporal-coupling} defines the training loop and makes the
+and the training objective. Section~\ref{sec:training-temporal-coupling} defines the training loop and makes the
 temporal coupling explicit. Sections~\ref{sec:full-gradient} and~\ref{sec:jfb-descent} develop the full gradient expression
 and identify the expensive term. Section~\ref{sec:jfb} introduces JFB, proves it produces
 descent directions, and completes the paper's contribution.
@@ -2066,6 +2079,44 @@ descent directions, and completes the paper's contribution.
 \pagebreak
 
 \section{Part IV --- Neural Network Approach and Jacobian-Free Backpropagation}
+
+\paragraph{Overview of Part IV.}
+Before developing the formalism, we state the complete narrative of this part
+in plain terms so that each subsequent section can be read against it.
+
+\textbf{What we are optimizing.} The training loss is the control objective
+$J(\theta) = \mathbb{E}_{x\sim\rho}[\int_0^T L\,dt + \alpha_G\, G(z(T))]$
+--- the expected cost of trajectories rolled out under the current policy.
+The HJB residual is \emph{never} in the training loss; it is computed as a
+diagnostic metric only, with zero weight in the optimizer.
+
+\textbf{Why this creates a hard gradient problem.} Computing $dJ/d\theta$
+requires differentiating through the entire trajectory rollout. At each of
+$N_t$ time steps, the control $u^\star_k$ was computed from
+$\nabla_z\phi_\theta(t_k, z_k)$, and the state $z_k$ itself was steered
+there by all preceding controls. This temporal coupling makes the exact
+gradient intractable for any network with more than a few thousand parameters.
+
+\textbf{What JFB does.} The gradient splits into two terms: Term~I, which
+differentiates through $\phi_\theta$ at fixed trajectory points (cheap,
+$O(P)$ per step), and Term~II, which differentiates through the trajectory
+itself (expensive, requires the full sensitivity ODE). JFB keeps Term~I and
+discards Term~II by treating trajectory states as constants via
+\texttt{stop\_grad}.
+
+\textbf{Why this is justified.} Theorem~1 proves that Term~I alone is a
+descent direction for $J(\theta)$ --- its inner product with the true
+gradient is strictly positive --- under four assumptions about contractivity,
+conditioning, and regularity. The proof is algebraic and finite-time; it
+works by establishing a pointwise inner product bound
+$\langle v_\theta(t), w_\theta(t)\rangle > 0$ and lifting it to the
+time-integrated gradient via Lemma~4.
+
+\textbf{Training versus inference.} At inference, the fixed-point iteration
+runs to convergence with no gradient tracking. During training, the iteration
+first converges in a \texttt{no\_grad} block, then \texttt{tracked\_iters}
+additional applications of $T_\theta$ are executed with gradient tracking,
+injecting the gradient signal into $\theta$ through $\phi_\theta$.
 
 \subsection{Neural Network Parameterization of the Value Function}
 \label{sec:nn-param}
@@ -2097,7 +2148,7 @@ exponentially fewer parameters than shallow ones for structured functions.
 For optimal control, neural networks have an additional advantage: the gradient
 $\nabla_x \phi_\theta(t,x)$ is obtained for free by automatic differentiation
 through the network's forward pass. This gradient is needed both for the costate
-substitution $p_x = \nabla_x\phi_\theta$ and for evaluating the HJB residual.
+substitution $p_x = \nabla_x\phi_\theta$ and for the fixed-point iteration.
 In a grid-based method, computing $\nabla_x\phi$ requires finite differences
 involving $2n$ neighboring grid points --- another $O(n)$ factor on top of the
 grid cost. With a network, it costs the same as one forward pass.
@@ -2128,8 +2179,8 @@ where $\mathcal{N}_\theta$ denotes the composition of $L$ layers:
 \end{equation}
 
 with weight matrices $W_k$ and pointwise nonlinearity $\sigma$. The choice of
-$\sigma$ matters: since we need $\nabla_x\phi_\theta$ and the HJB residual
-involves $\partial_t\phi_\theta$, the network must be at least $C^1$ in its
+$\sigma$ matters: since we need $\nabla_x\phi_\theta$ for the costate
+substitution and fixed-point iteration, the network must be at least $C^1$ in its
 inputs. This rules out ReLU activations (which are not differentiable at zero)
 in favor of smooth activations such as $\tanh$, softplus, or sinusoidal
 activations (as used in SIREN architectures). The paper uses $\tanh$ activations
@@ -2156,51 +2207,59 @@ must learn.
 
 \medskip\hrule\medskip
 
-\subsubsection{The HJB Residual Loss}
+\subsubsection{The Training Objective}
 
-To train $\phi_\theta$, we need a loss function that is minimized when
-$\phi_\theta = \phi$. The natural choice is the \textbf{HJB residual}: the
-pointwise violation of the HJB equation \eqref{eq:hjb-hamiltonian-form}. Define the residual
-at a point $(t,x)$ as:
+\begin{quote}
+\textbf{Important.} The HJB residual described in this section is \emph{not}
+the training loss. It is a diagnostic quantity computed during training to
+verify that $\phi_\theta$ is converging toward the true value function, but
+its weight in the optimizer is set to zero ($\alpha_{\text{HJB}} = [0,0]$,
+$\alpha_{\text{adj}} = [0,0]$). The actual training loss is the control
+objective $J(\theta)$, defined below and used in the training loop of
+Section~\ref{sec:training-temporal-coupling}. The fact that the HJB residual
+decreases during training even though it is never minimized is one of the
+paper's key empirical findings.
+\end{quote}
 
-\begin{equation}
-    \mathcal{R}(t, x;\theta)
-    = -\frac{\partial \phi_\theta}{\partial t}(t,x)
-    + H(t, x, \nabla_x\phi_\theta(t,x))
-    \label{eq:hjb_residual}
-\end{equation}
-
-where $H(t,x,p) = \sup_{u \in U}\mathcal{H}(t,x,p,u)$. The true value function
-satisfies $\mathcal{R}(t,x;\theta^\star) = 0$ everywhere. The training loss is
-the mean squared HJB residual over a distribution of sample points:
-
-\begin{equation}
-    \mathcal{L}(\theta)
-    = \mathbb{E}_{(t,x) \sim \mu_\theta}
-    \left[ \mathcal{R}(t, x;\theta)^2 \right]
-    \label{eq:hjb-residual-loss}
-\end{equation}
-
-where $\mu_\theta$ is a distribution over $[0,T] \times \mathbb{R}^n$ from
-which training points are sampled. The dependence of $\mu_\theta$ on $\theta$
-is the source of the temporal coupling problem: training points are generated
-by simulating trajectories under the current policy $u^\star(\cdot;\theta)$,
-which itself depends on $\theta$ through $\nabla_x\phi_\theta$. We make this
-explicit in Section~\ref{sec:training-temporal-coupling}.
-
-\textbf{Evaluating the residual for implicit Hamiltonians.} Computing
-$\mathcal{R}(t,x;\theta)$ requires evaluating $H(t,x,\nabla_x\phi_\theta)
-= \sup_u \mathcal{H}(t,x,\nabla_x\phi_\theta,u)$. This requires the implicit
-solve of Section~\ref{sec:implicit-solve}: Newton's method applied to $\nabla_u\mathcal{H} = 0$ with
-$p_x = \nabla_x\phi_\theta(t,x)$. For the explicit case, this is a closed-form
-evaluation. For the implicit case, it is a Newton loop. In both cases the result
-$u^\star(t,x;\theta)$ is substituted back to give:
+The paper trains $\phi_\theta$ by directly minimizing the \textbf{control
+objective} --- the expected cost of trajectories rolled out under the current
+policy. For a single initial condition $x$, define:
 
 \begin{equation}
-    H(t,x,\nabla_x\phi_\theta)
-    = \mathcal{H}(t, x, \nabla_x\phi_\theta, u^\star(t,x;\theta))
-    = -\langle \nabla_x\phi_\theta,\, f(t,x,u^\star)\rangle - L(t,x,u^\star).
+    J_x(\theta) = \int_0^T L(t, z_x, u^\star_\theta)\, dt
+    + \alpha_G \cdot G(z_x(T))
+    \label{eq:control_objective}
 \end{equation}
+
+where $z_x$ is the state trajectory obtained by integrating the controlled
+dynamics $\dot{z}_x = f(t, z_x, u^\star_\theta)$ forward from initial
+condition $z_x(0) = x$, and $u^\star_\theta$ is the optimal control recovered
+via the fixed-point iteration of Section~\ref{sec:implicit-solve} at each time
+step. The training objective is the expectation over a distribution $\rho$ of
+initial conditions:
+
+\begin{equation}
+    \min_\theta\; \mathbb{E}_{x \sim \rho}\bigl[J_x(\theta)\bigr]
+    \label{eq:training_objective}
+\end{equation}
+
+The HJB residual $\mathcal{R}(t,x;\theta) = -\partial_t\phi_\theta
++ H(t,x,\nabla_x\phi_\theta)$ is \emph{not} part of the training loss.
+It is computed during training as a diagnostic metric to verify that
+$\phi_\theta$ is converging toward the true value function, but its weight
+is set to zero in the optimizer. The fact that the HJB residual decreases
+during training even though it is never directly minimized is one of the
+paper's key empirical findings: minimizing $J(\theta)$ end-to-end implicitly
+pushes $\phi_\theta$ toward satisfying the HJB equation, by virtue of the
+PMP--HJB bridge established in Part~III.
+
+This choice of training loss has a direct consequence for the gradient
+computation. Because $J_x(\theta)$ depends on $\theta$ through entire
+rolled-out trajectories --- and each point on those trajectories was generated
+using $u^\star_\theta$, which itself depends on $\phi_\theta$ --- the gradient
+$dJ/d\theta$ accumulates coupling across all time steps. This is the
+\textbf{temporal coupling} problem developed in
+Section~\ref{sec:training-temporal-coupling}.
 
 \medskip\hrule\medskip
 
@@ -2226,7 +2285,7 @@ data.
 the bridge identity, which in turn provides the correct direction for the
 implicit solve. A directly parameterized $u_\theta$ cannot use this bridge ---
 it has no costate, no Hamiltonian structure, and no way to handle implicit
-Hamiltonians via Newton's method. The implicit solve \textit{requires} the
+Hamiltonians via the fixed-point iteration. The implicit solve \textit{requires} the
 costate, which \textit{requires} the value function parameterization.
 
 \textbf{Third}, the value function encodes the solution for all initial
@@ -2251,17 +2310,20 @@ et al.\ and Onken et al. All of these methods share a common requirement: they
 need a closed-form expression for $u^\star = g(t, z_x, \nabla_x\phi_\theta)$ to:
 
 \begin{enumerate}
-    \item Evaluate the HJB residual \eqref{eq:hjb_residual} (since computing
-          $H = \mathcal{H}|_{u^\star}$ requires knowing $u^\star$).
     \item Generate training trajectories by integrating the dynamics forward
-          under $u^\star$.
-    \item Backpropagate the loss through the trajectory to update $\theta$.
+          under $u^\star = g(t, z_x, \nabla_x\phi_\theta)$ at each time step.
+    \item Evaluate the running cost $L(t, z_x, u^\star)$ and terminal cost
+          $G(z_x(T))$ along those trajectories.
+    \item Backpropagate $dJ/d\theta$ through the trajectory rollout to update
+          $\theta$ via gradient descent.
 \end{enumerate}
 
-Without $g$, all three steps break down. The paper resolves this by replacing
-$g$ with the Newton solve of Section~\ref{sec:implicit-solve}, and replacing exact backpropagation
-through the trajectory with JFB. This is the precise gap the paper fills in the
-landscape of neural HJB methods.
+Without $g$, step~1 breaks: you cannot integrate the trajectory forward
+because you cannot evaluate the control at each step. The paper resolves this
+by replacing $g$ with the fixed-point iteration of
+Section~\ref{sec:implicit-solve}, and replacing exact backpropagation through
+the rollout with JFB. This is the precise gap the paper fills in the landscape
+of neural HJB methods.
 
 \medskip
 
@@ -2278,10 +2340,10 @@ We now describe the complete training procedure and identify precisely where
 the temporal coupling arises and why it makes exact gradient computation
 expensive.
 
-The training loop proceeds as follows. At each iteration, a batch of initial
-conditions $\{x_i\}_{i=1}^{B}$ is sampled from a distribution over
-$\mathbb{R}^n$. For each $x_i$, a trajectory $\{z_{x_i}(t)\}_{t \in [0,T]}$
-is generated by integrating the controlled dynamics forward in time:
+At each training iteration, a batch of initial conditions
+$\{x_i\}_{i=1}^{B}$ is sampled from the distribution $\rho$. For each
+$x_i$, a trajectory is generated by integrating the controlled dynamics
+forward:
 
 \begin{equation}
     \dot{z}_{x_i}(t) = f(t, z_{x_i}(t), u^\star(t, z_{x_i}(t);\theta)),
@@ -2289,76 +2351,44 @@ is generated by integrating the controlled dynamics forward in time:
     \label{eq:controlled_dynamics}
 \end{equation}
 
-where $u^\star(t, z_{x_i};\theta)$ is evaluated at each integration step via
-the pipeline of Section~\ref{sec:implicit-solve}: autodiff to get $\nabla_x\phi_\theta$, then Newton's
-method to solve $\nabla_u\mathcal{H} = 0$. Along each trajectory, the HJB
-residual $\mathcal{R}(t, z_{x_i}(t);\theta)$ is evaluated at a set of
-quadrature time points $\{t_j\}_{j=1}^{M}$. The total training loss is:
+using forward Euler with step size $h = T/N_t$. At each of the $N_t$ time
+steps, the control $u^\star_\theta$ is evaluated via the pipeline of
+Section~\ref{sec:implicit-solve}: autodiff gives $\nabla_z\phi_\theta$, then
+fixed-point iteration converges to $u^\star$. The running cost is accumulated
+as $\sum_k h \cdot L(t_k, z_k, u^\star_k)$, and the terminal cost
+$G(z(T))$ is evaluated at the end of the rollout.
+
+The total training loss over the batch is:
 
 \begin{equation}
     \mathcal{L}(\theta)
-    = \frac{1}{B} \sum_{i=1}^{B} \frac{1}{M} \sum_{j=1}^{M}
-    \mathcal{R}(t_j, z_{x_i}(t_j);\theta)^2.
+    = \frac{1}{B} \sum_{i=1}^{B}
+    \left[\alpha_L \sum_{k=0}^{N_t-1} h \cdot L(t_k, z_{x_i}(t_k), u^\star_k)
+    + \alpha_G \cdot G(z_{x_i}(T))\right].
     \label{eq:training_loss}
 \end{equation}
 
 Parameters are updated by gradient descent: $\theta \leftarrow \theta - \eta
 \nabla_\theta \mathcal{L}(\theta)$ for learning rate $\eta > 0$. The entire
 procedure is differentiable in principle --- every operation from $\theta$
-through the network, through the Newton solve, through the ODE integration, to
-the loss is differentiable. The question is whether computing $\nabla_\theta
-\mathcal{L}$ exactly is tractable.
+through the network, through the fixed-point solve, through the ODE
+integration, to the cost is differentiable. The question is whether computing
+$\nabla_\theta\mathcal{L}$ exactly is tractable.
+
+Note that the HJB residual $\mathcal{R}(t,z;\theta)$ and adjoint residual are
+also computed along each trajectory and logged, but with zero weight in
+$\mathcal{L}(\theta)$. They serve as diagnostic metrics only.
+
+The structure of $\nabla_\theta\mathcal{L}$ and why it is expensive to compute
+exactly is developed in full in Section~\ref{sec:full-gradient}.
 
 \medskip\hrule\medskip
 
-\subsubsection{The Two Terms in the Gradient}
+\subsubsection{The Cost of Term II: Why Temporal Coupling Is Expensive}
 
-To compute $\nabla_\theta \mathcal{L}$, apply the chain rule to
-\eqref{eq:training_loss}. Focus on a single trajectory term for clarity. The
-loss along a single trajectory is:
-
-\begin{equation}
-    \mathcal{L}_i(\theta)
-    = \frac{1}{M}\sum_{j=1}^{M}
-    \mathcal{R}(t_j, z_{x_i}(t_j;\theta);\theta)^2
-\end{equation}
-
-where we make explicit that $z_{x_i}(t_j;\theta)$ depends on $\theta$ through
-the controlled dynamics \eqref{eq:controlled_dynamics}. The gradient is:
-
-\begin{equation}
-    \frac{d\mathcal{L}_i}{d\theta}
-    = \underbrace{\frac{\partial \mathcal{L}_i}{\partial \theta}
-    \bigg|_{z_{x_i} \,\text{fixed}}}_{\text{Term I: explicit gradient}}
-    + \underbrace{\frac{\partial \mathcal{L}_i}{\partial z_{x_i}(\cdot)}
-    \cdot \frac{dz_{x_i}(\cdot)}{d\theta}}_{\text{Term II: trajectory gradient}}
-    \label{eq:gradient_split}
-\end{equation}
-
-\textbf{Term I} is the gradient of the HJB residual with respect to $\theta$
-holding the trajectory $z_{x_i}(t)$ fixed as constant data. This treats the
-trajectory points $\{z_{x_i}(t_j)\}$ as a fixed dataset and differentiates
-only through the explicit appearances of $\phi_\theta$ in the residual
-$\mathcal{R}$. Concretely:
-
-\begin{equation}
-    \frac{\partial \mathcal{R}(t, z;\theta)^2}{\partial\theta}
-    \bigg|_{z\,\text{fixed}}
-    = 2\,\mathcal{R}(t,z;\theta) \cdot
-    \frac{\partial \mathcal{R}(t,z;\theta)}{\partial\theta}
-    \bigg|_{z\,\text{fixed}}
-\end{equation}
-
-where $\partial\mathcal{R}/\partial\theta|_{z\,\text{fixed}}$ involves
-differentiating $\partial_t\phi_\theta$ and $\nabla_x\phi_\theta$ with respect
-to $\theta$ at fixed $(t,z)$ --- standard autodiff operations through the
-network.
-
-\textbf{Term II} is the gradient through the trajectory itself. The trajectory
-$z_{x_i}(t;\theta)$ satisfies the ODE \eqref{eq:controlled_dynamics}, and its
-dependence on $\theta$ arises because $u^\star$ depends on $\theta$ through
-$\nabla_x\phi_\theta$. Differentiating \eqref{eq:controlled_dynamics} with
-respect to $\theta$:
+To understand the cost, consider the sensitivity of the trajectory with respect
+to $\theta$. Differentiating the dynamics \eqref{eq:controlled_dynamics} gives
+the \textbf{sensitivity ODE}:
 
 \begin{equation}
     \frac{d}{dt}\frac{dz_{x_i}}{d\theta}
@@ -2369,9 +2399,9 @@ respect to $\theta$:
     \label{eq:sensitivity_ode}
 \end{equation}
 
-with initial condition $dz_{x_i}(0)/d\theta = 0$ (the initial condition $x_i$
-does not depend on $\theta$). The term $du^\star/d\theta$ itself requires the
-IFT formula \eqref{eq:IFT_derivative} from Section~\ref{sec:implicit-solve}:
+with initial condition $dz_{x_i}(0)/d\theta = 0$. The term
+$du^\star/d\theta$ requires the IFT formula \eqref{eq:IFT_derivative} from
+Section~\ref{sec:implicit-solve}:
 
 \begin{equation}
     \frac{du^\star}{d\theta}
@@ -2382,15 +2412,10 @@ IFT formula \eqref{eq:IFT_derivative} from Section~\ref{sec:implicit-solve}:
 \end{equation}
 
 which requires differentiating $\nabla_x\phi_\theta$ with respect to $\theta$
---- a second-order autodiff operation (Jacobian of the gradient of the network
-with respect to its parameters) --- and then solving an $m \times m$ linear
+--- a second-order autodiff operation --- and solving an $m \times m$ linear
 system at every time step.
 
-\medskip\hrule\medskip
-
-\subsubsection{The Cost of Term II: Why Temporal Coupling Is Expensive}
-
-Equation \eqref{eq:sensitivity_ode} is a \textbf{sensitivity ODE} --- a linear
+This is a linear
 ODE of dimension $n \times P$ (state dimension times number of parameters)
 that must be integrated alongside the main trajectory ODE. Its solution at time
 $t_j$ is:
@@ -2438,74 +2463,69 @@ simply not feasible.
 \subsubsection{Temporal Coupling: A Summary}
 
 The temporal coupling problem can be stated precisely in one sentence: the
-distribution $\mu_\theta$ of training points depends on $\theta$, so
-$\nabla_\theta\mathcal{L}(\theta)$ has two terms, and the second term
-(Term II) requires second-order autodiff through $\phi_\theta$ at every time
-step of every trajectory, making exact gradient computation intractable for
-neural networks with more than a few thousand parameters.
+trajectories along which the control objective $\mathcal{L}(\theta)$ is
+evaluated depend on $\theta$, so $\nabla_\theta\mathcal{L}(\theta)$ has two
+terms, and the second term (Term~II) requires second-order autodiff through
+$\phi_\theta$ at every time step of every trajectory, making exact gradient
+computation intractable for neural networks with more than a few thousand
+parameters.
 
 This is not a problem specific to implicit Hamiltonians. It afflicts any
 method that generates training trajectories under the current policy and then
 differentiates through those trajectories. What the implicit Hamiltonian adds
 is an additional layer of coupling: $u^\star$ depends on $\theta$ not only
 through $\phi_\theta$ evaluated at the trajectory points, but also through the
-Newton solve, which itself depends on $\nabla_x\phi_\theta$ via
+fixed-point solve, which itself depends on $\nabla_x\phi_\theta$ via
 \eqref{eq:dustar_dtheta}. The JFB approach of Section~\ref{sec:jfb} addresses both layers
 simultaneously by dropping Term II entirely and showing that Term I alone is
 sufficient for convergence.
 
 \medskip\hrule\medskip
 
-\subsubsection{The Role of the HJB Residual as a Self-Supervised Signal}
+\subsubsection{The HJB Residual as a Diagnostic}
 
-Before proceeding to JFB, it is worth pausing on a conceptual point about the
-training signal. The loss \eqref{eq:training_loss} is \textbf{self-supervised}:
-it requires no labeled data, no demonstrations of optimal behavior, and no
-reward signal from the environment. The only information it uses is the HJB
-equation itself --- a mathematical identity that the true value function must
-satisfy. This is a strong form of physics-informed learning: the physics
-(encoded in the HJB PDE) is the entire training signal.
+Although the training loss is the control objective $J(\theta)$, the HJB
+residual $\mathcal{R}(t,z;\theta) = -\partial_t\phi_\theta +
+H(t,z,\nabla_x\phi_\theta)$ is computed alongside each trajectory during
+training and logged as a diagnostic. Its weight in the optimizer is zero.
 
-This self-supervised structure has a practical consequence for the temporal
-coupling problem. Because there are no external labels, the quality of the
-training signal at a point $(t,z)$ depends entirely on how well the HJB
-residual can be evaluated there. Points on or near optimal trajectories ---
-where the value function is most relevant for control --- are therefore the most
-informative training points. This motivates sampling training points along
-trajectories generated by the current policy, rather than uniformly over the
-state space. But this trajectory-based sampling is exactly what creates the
-temporal coupling. The self-supervised nature of the loss and the temporal
-coupling are therefore two sides of the same coin: the most informative
-training distribution is the one most tightly coupled to the current parameters.
+This separation is deliberate. The paper's key empirical observation is that
+$\|\mathcal{R}\|$ decreases during training even though it is never directly
+minimized. This confirms that minimizing $J(\theta)$ end-to-end implicitly
+drives $\phi_\theta$ toward the true value function --- a consequence of the
+PMP--HJB bridge: if $\phi_\theta$ produces trajectories with low cost, it must
+be a good approximation to the true value function, which satisfies the HJB
+equation exactly.
 
-This tension is resolved not by changing the sampling strategy but by
-approximating the gradient --- keeping Term I and discarding Term II --- which
-is the JFB approach of Section~\ref{sec:jfb}. The key insight, made precise there,
-mathematically precise, is that Term I alone carries enough information about
-the true gradient direction to guarantee convergence, even though it ignores
-how the training distribution changes with $\theta$.
+This also explains why the temporal coupling problem is unavoidable: the
+training signal comes from trajectory cost, so the training states are
+trajectory states, which depend on $\theta$. A PINN-style approach that
+directly minimized the HJB residual at fixed sample points would have no
+temporal coupling, but would lose the end-to-end structure and would require
+evaluating $H(t,x,\nabla_x\phi_\theta)$ --- the implicit supremum --- at
+every sample point as part of the loss itself, not just during trajectory
+generation.
 
 
-\subsection{The Full Gradient Expression and the Expensive Term}
+\subsection{The Gradient of the Control Objective and Its Two Terms}
 \label{sec:full-gradient}
 
 \medskip\hrule\medskip
 
 \subsubsection{Consolidating the Gradient Split}
 
-Section~\ref{sec:training-temporal-coupling} identified the two-term gradient split \eqref{eq:gradient_split}.
-We now write it in a single compact expression that makes the structure of
-the approximation used in Section~\ref{sec:jfb} immediately visible.
+We now derive the gradient $d\mathcal{L}/d\theta$ of the control objective and
+identify the two-term structure that motivates JFB.
 
-For a single trajectory starting from $x$, discretize time as $0 = t_0 
-t_1 < \cdots < t_M = T$ with spacing $\Delta t = T/M$. Write
+For a single trajectory starting from $x$, discretize time as $0 = t_0 <
+t_1 < \cdots < t_M = T$ with step size $h = T/M$. Write
 $z_k = z_x(t_k;\theta)$ and $u_k^\star = u^\star(t_k, z_k;\theta)$. The
-discrete loss is:
+discrete control objective is:
 
 \begin{equation}
     \mathcal{L}(\theta)
-    = \frac{1}{M}\sum_{k=0}^{M-1}
-    \mathcal{R}(t_k, z_k;\theta)^2.
+    = \sum_{k=0}^{M-1} h \cdot L(t_k, z_k, u^\star_k(\theta))
+    + \alpha_G \cdot G(z_M(\theta)).
     \label{eq:discrete_loss}
 \end{equation}
 
@@ -2513,23 +2533,24 @@ The full gradient is:
 
 \begin{equation}
     \frac{d\mathcal{L}}{d\theta}
-    = \underbrace{\frac{1}{M}\sum_{k=0}^{M-1}
-    2\,\mathcal{R}_k \cdot
-    \frac{\partial \mathcal{R}_k}{\partial\theta}
-    \bigg|_{z_k\,\text{fixed}}}_{\text{Term I: } \widetilde{\nabla}_\theta
-    \mathcal{L}}
-    + \underbrace{\frac{1}{M}\sum_{k=0}^{M-1}
-    2\,\mathcal{R}_k \cdot
-    \nabla_{z_k}\mathcal{R}_k \cdot
+    = \underbrace{
+    \sum_{k=0}^{M-1} h \cdot
+    \frac{\partial L(t_k, z_k, u^\star_k)}{\partial\theta}
+    \bigg|_{z_k\,\text{fixed}}
+    + \alpha_G \cdot \frac{\partial G(z_M)}{\partial\theta}
+    \bigg|_{z_M\,\text{fixed}}
+    }_{\text{Term I: } \widetilde{\nabla}_\theta\mathcal{L}}
+    +\; \underbrace{
+    \sum_{k=0}^{M} \nabla_{z_k} C_k \cdot
     \frac{dz_k}{d\theta}}_{\text{Term II: trajectory coupling}}
     \label{eq:full_gradient}
 \end{equation}
 
-where $\mathcal{R}_k = \mathcal{R}(t_k, z_k;\theta)$ and
-$\nabla_{z_k}\mathcal{R}_k$ is the gradient of the residual with respect to
-the state at $t_k$. Term I is the \textbf{JFB gradient}
+where $\nabla_{z_k} C_k$ collects the cost gradients with respect to the
+state at $t_k$ (running cost at interior steps, terminal cost at $t_M$).
+Term~I is the \textbf{JFB gradient}
 $\widetilde{\nabla}_\theta\mathcal{L}$ --- the approximation the paper uses.
-Term II is the trajectory coupling term that makes exact computation
+Term~II is the trajectory coupling term that makes exact computation
 intractable.
 
 \medskip\hrule\medskip
@@ -2678,49 +2699,72 @@ The question is therefore: when is $\|E(\theta)\|
 \subsubsection{Bounding the Error Term}
 
 \begin{mathrequirementsbox}
-From \eqref{eq:full_gradient} and \eqref{eq:traj_jacobian}, Term II satisfies:
+From \eqref{eq:full_gradient} and \eqref{eq:traj_jacobian}, Term~II satisfies:
 
 \begin{equation}
     \|E(\theta)\|
-    \leq \frac{1}{M}\sum_{k=0}^{M-1}
-    2|\mathcal{R}_k|\,
-    \|\nabla_{z_k}\mathcal{R}_k\|\,
+    \leq \sum_{k=0}^{M}
+    \|\nabla_{z_k} C_k\|\,
     \left\|\frac{dz_k}{d\theta}\right\|.
 \end{equation}
 
 The trajectory Jacobian $\|dz_k/d\theta\|$ grows as $e^{\lambda_{\max}t_k}$
-in the worst case. However, near a well-trained network where
-$\|\mathcal{R}_k\| \approx 0$, the prefactor $|\mathcal{R}_k|$ in Term II
-also goes to zero. Both terms go to zero at a true solution, so the ratio
-$\|E\|/\|\widetilde{\nabla}\mathcal{L}\|$ need not diverge even as the
-trajectory Jacobian grows.
+in the worst case. However, the cost gradients $\|\nabla_{z_k} C_k\|$ remain
+bounded, and for a well-trained network the trajectory is nearly optimal so
+Term~II is small relative to Term~I.
 
-More precisely, the paper establishes the following sufficient condition
-for \eqref{eq:norm_condition}: if the step size $\Delta t$ is sufficiently
-small (so that consecutive trajectory states are close) and the network
-approximation error is not too large relative to the HJB residual, then
-$\|E(\theta)\| < \|\widetilde{\nabla}_\theta\mathcal{L}\|$ and JFB is a
-descent direction. The formal statement involves a bound of the form:
+The paper's actual proof does not bound $\|E(\theta)\|$ directly via a
+discretization argument. Instead, it works at the level of the
+\textbf{time-integrated gradient vectors}. Define:
+\begin{align}
+    v_\theta(t) &= \left(\frac{du^\star_\theta}{d\theta}\right)^{\!\top}
+    \bigl(\nabla_u L + \nabla_u f^\top p_x\bigr)
+    &&\text{(true gradient integrand)}, \\
+    w_\theta(t) &= \left(\frac{\partial T_\theta}{\partial\theta}\right)^{\!\top}
+    \bigl(\nabla_u L + \nabla_u f^\top p_x\bigr)
+    &&\text{(JFB gradient integrand)},
+\end{align}
+so that $d\mathcal{J}/d\theta = \int v_\theta\, dt$ and
+$d\widetilde{\mathcal{J}}/d\theta = \int w_\theta\, dt$.
 
+The descent condition
+$\langle d\widetilde{\mathcal{J}}/d\theta,\; d\mathcal{J}/d\theta\rangle > 0$
+is equivalent to
+$\bigl\langle \int w_\theta\, dt,\; \int v_\theta\, dt \bigr\rangle > 0$.
+
+\textbf{Lemma~2} (under Assumptions~1--3) establishes the \textit{pointwise} bound:
 \begin{equation}
-    \|E(\theta)\| \leq C(\Delta t, \theta)\,
-    \|\widetilde{\nabla}_\theta\mathcal{L}\|
-    \label{eq:E_bound}
+    \langle v_\theta(t),\, w_\theta(t) \rangle
+    \;\geq\; \|M_\theta\, v_\theta\|^2\,(\lambda_- - \gamma\,\lambda_+)
+    \;=:\; \delta^2 > 0
+    \label{eq:pointwise_bound}
 \end{equation}
+for all $t, z, u, \theta$, where $\lambda_-$ and $\lambda_+$ are the
+uniform eigenvalue bounds on $(M_\theta M_\theta^\top)^{-1}$ from Lemma~1,
+and $\gamma$ is the contractivity constant from Assumption~1. The condition
+$\lambda_- - \gamma\,\lambda_+ > 0$ is equivalent to the condition number
+$\kappa(M_\theta M_\theta^\top) < 1/\gamma$, which is enforced by
+Assumption~2.
 
-where $C(\Delta t, \theta) \to 0$ as $\Delta t \to 0$ for fixed $\theta$
-away from a critical point, ensuring \eqref{eq:norm_condition} holds for
-fine enough discretization. Substituting \eqref{eq:E_bound} into
-\eqref{eq:descent_expanded}:
-
+\textbf{Lemma~4} then lifts this pointwise bound to the integrated vectors:
+if $\langle v_\theta(t),\, w_\theta(t)\rangle \geq \delta^2 > 0$ for all
+$t$, and $v_\theta, w_\theta$ satisfy the $L^2$-boundedness and fluctuation
+conditions of Assumption~4, then
+$\bigl\langle \int v_\theta\, dt,\; \int w_\theta\, dt \bigr\rangle > 0$.
+The proof uses the identity:
 \begin{equation}
-    \|\widetilde{\nabla}_\theta\mathcal{L}\|^2
-    + \langle\widetilde{\nabla}_\theta\mathcal{L}, E\rangle
-    \geq \|\widetilde{\nabla}_\theta\mathcal{L}\|^2
-    (1 - C(\Delta t, \theta)) > 0
+    \langle I_1, I_2 \rangle
+    = T \int \langle v_\theta, w_\theta\rangle\, dt
+    - T \int \langle v_\theta - C_v,\; w_\theta - C_w\rangle\, dt
 \end{equation}
+and Assumption~4 ensures the fluctuation term is dominated by the
+pointwise inner product term.
 
-for $C(\Delta t, \theta) < 1$, which holds for $\Delta t$ small enough.
+\textbf{Theorem~1} follows immediately: $-d\widetilde{\mathcal{J}}/d\theta$
+is a descent direction for $\mathcal{J}_x(\theta)$ because its inner product
+with the true gradient $-d\mathcal{J}/d\theta$ is positive. The proof is
+finite-time and algebraic --- there is no discretization $\Delta t$ and no
+asymptotic argument.
 \end{mathrequirementsbox}
 
 \medskip\hrule\medskip
@@ -2764,16 +2808,18 @@ differentiating through the fixed-point iteration to convergence (which
 requires the IFT), one differentiates only through the loss at the fixed
 point, treating the fixed-point solution as a constant. The paper adapts
 this idea to the optimal control setting, where the ``fixed-point layer''
-is the Newton solve for $u^\star$ and the ``implicit network'' is the
-composition of $\phi_\theta$ with the Newton iterations.
+is the gradient ascent solve for $u^\star$ and the ``implicit network'' is the
+composition of $\phi_\theta$ with the fixed-point iterations.
 
 The descent direction proof in the optimal control context is new to the
 paper and is not a direct consequence of prior JFB results, because the
 error term $E(\theta)$ in the optimal control setting involves the trajectory
 Jacobian --- a dynamical systems quantity with no analogue in the static
-implicit network setting. The bound \eqref{eq:E_bound} is therefore a
-genuine contribution of the paper, providing the first theoretical guarantee
-for JFB applied to trajectory optimization with implicit Hamiltonians.
+implicit network setting. The pointwise inner product bound
+\eqref{eq:pointwise_bound} and its lift to the integrated gradient
+(Theorem~1) are therefore a genuine contribution of the paper, providing the
+first theoretical guarantee for JFB applied to trajectory optimization with
+implicit Hamiltonians.
 
 
 \subsection{Jacobian-Free Backpropagation --- The Complete Algorithm}
@@ -2789,29 +2835,21 @@ an algorithmic operation, show exactly where the stop-gradient appears in the
 computational graph, and present the complete training algorithm that constitutes
 the paper's method.
 
-Recall the training loss \eqref{eq:training_loss}:
-
-\begin{equation}
-    \mathcal{L}(\theta)
-    = \frac{1}{B}\sum_{i=1}^{B}
-    \frac{1}{M}\sum_{j=1}^{M}
-    \mathcal{R}(t_j, z_{x_i}(t_j;\theta);\theta)^2.
-\end{equation}
-
-The residual $\mathcal{R}(t, z;\theta)$ depends on $\theta$ through two
-channels:
+Recall the training loss \eqref{eq:training_loss}: the control objective
+accumulated along rolled-out trajectories. The cost at each time step depends
+on $\theta$ through two channels:
 
 \begin{enumerate}
-    \item \textbf{Explicitly}: through $\partial_t\phi_\theta(t,z)$ and
-          $\nabla_x\phi_\theta(t,z)$ evaluated at the fixed point $(t,z)$.
-    \item \textbf{Implicitly}: through $z = z_{x_i}(t_j;\theta)$, the
-          trajectory point itself, which depends on $\theta$ through the
-          controlled dynamics.
+    \item \textbf{Explicitly}: through $u^\star_k(\theta)$, which depends on
+          $\nabla_z\phi_\theta(t_k, z_k)$ via the fixed-point iteration $T_\theta$.
+    \item \textbf{Implicitly}: through $z_k = z_{x_i}(t_k;\theta)$, the
+          trajectory state itself, which depends on $\theta$ through the
+          controlled dynamics at all preceding time steps.
 \end{enumerate}
 
 JFB is the operation of \textbf{blocking the gradient through channel 2}
 while keeping channel 1. Concretely, define the \textbf{stopped trajectory}
-$\bar{z}_{x_i}(t_j) = \texttt{stop\_grad}(z_{x_i}(t_j;\theta))$: the
+$\bar{z}_{x_i}(t_k) = \texttt{stop\_grad}(z_{x_i}(t_k;\theta))$: the
 trajectory is simulated using the current $\theta$ to generate the states,
 but these states are treated as fixed constants with zero gradient for the
 purpose of backpropagation. The JFB loss is then:
@@ -2819,22 +2857,35 @@ purpose of backpropagation. The JFB loss is then:
 \begin{equation}
     \widetilde{\mathcal{L}}(\theta)
     = \frac{1}{B}\sum_{i=1}^{B}
-    \frac{1}{M}\sum_{j=1}^{M}
-    \mathcal{R}(t_j, \bar{z}_{x_i}(t_j);\theta)^2
+    \left[\alpha_L \sum_{k=0}^{M-1}
+    h \cdot L(t_k, \bar{z}_{x_i}(t_k), u^\star_k(\theta))
+    + \alpha_G \cdot G(\bar{z}_{x_i}(T))\right]
     \label{eq:jfb_loss}
 \end{equation}
 
-and the JFB gradient is $\widetilde{\nabla}_\theta\mathcal{L} =
-\nabla_\theta\widetilde{\mathcal{L}}(\theta)$, computed by standard autodiff
-through $\phi_\theta$ at the fixed points $\{(t_j, \bar{z}_{x_i}(t_j))\}$.
-This is Term I of \eqref{eq:full_gradient} exactly.
+where $\bar{z}_{x_i}(t_k) = \texttt{stop\_grad}(z_{x_i}(t_k;\theta))$ are
+the stopped trajectory states, and $u^\star_k(\theta)$ is computed via the
+$K'$ tracked gradient steps of $T_\theta$ starting from the converged fixed
+point.
 
-The stop-gradient also applies inside the Newton solve: when computing
-$u^\star(t_j, \bar{z}_{x_i}(t_j);\theta)$ for use in the residual
-evaluation, the Newton iterations are not differentiated through. The output
-$u^\star$ is used to evaluate $\mathcal{R}$ but treated as a constant for
-backpropagation. This is the second layer of the JFB approximation, handling
-the implicit Hamiltonian coupling identified in Section~\ref{sec:training-temporal-coupling}.
+The JFB gradient $\widetilde{\nabla}_\theta\mathcal{L} =
+\nabla_\theta\widetilde{\mathcal{L}}(\theta)$ is computed by autodiff through
+the $K'$ tracked applications of $T_\theta$ at each time step, treating the
+trajectory states $\bar{z}_k$ as constants. Concretely: at each step, the
+fixed-point iteration runs without gradient tracking to convergence, then $K'$
+additional applications of $T_\theta$ are executed with gradient tracking, and
+the cost $L(t_k, \bar{z}_k, u^\star_k)$ is accumulated. The gradient flows
+through $\phi_\theta$ via $\nabla_z\phi_\theta$ inside $T_\theta$, but not
+through the trajectory states themselves. This is Term~I of
+\eqref{eq:full_gradient} exactly.
+
+The stop-gradient applies at two levels: (1) the trajectory states
+$\bar{z}_k$ are detached, blocking the trajectory coupling (channel~2), and
+(2) the convergence phase of the fixed-point iteration is not differentiated
+through --- only the final $K'$ applications of $T_\theta$ carry gradient.
+This is the two-layer JFB approximation handling both the trajectory coupling
+and the implicit Hamiltonian coupling identified in
+Section~\ref{sec:training-temporal-coupling}.
 
 \medskip\hrule\medskip
 
@@ -2842,13 +2893,14 @@ the implicit Hamiltonian coupling identified in Section~\ref{sec:training-tempor
 
 We now state the full training procedure. Let $\phi_\theta$ be parameterized
 with hard terminal enforcement \eqref{eq:hard_terminal}. Let
-$\varepsilon_{\text{Newton}}$ be the Newton convergence tolerance and $K$
-the maximum number of Newton iterations.
+$\varepsilon_{\text{tol}}$ be the fixed-point convergence tolerance, $\alpha$
+the gradient ascent step size, $K$ the maximum number of fixed-point
+iterations, and $K'$ the number of tracked gradient steps.
 
 \begin{algorithm}[t]
 \caption{End-to-end training with implicit Hamiltonians and Jacobian-Free Backpropagation (JFB)}
 \begin{algorithmic}[1]
-\Require Dynamics $f$, running cost $L$, terminal cost $G$, control set $U$, initial-condition distribution $\rho$, learning rate $\eta$, batch size $B$, time points $\{t_j\}_{j=0}^M$, Newton tolerance $\varepsilon_{\text{Newton}}$, max Newton iterations $K$.
+\Require Dynamics $f$, running cost $L$, terminal cost $G$, control set $U$, initial-condition distribution $\rho$, learning rate $\eta$, batch size $B$, time points $\{t_j\}_{j=0}^M$, step size $h=T/M$, fixed-point tolerance $\varepsilon_{\text{tol}}$, gradient ascent step size $\alpha$, max fixed-point iterations $K$, tracked iterations $K'$, cost weights $\alpha_L$, $\alpha_G$.
 \State Initialize $\theta^{(0)}$ randomly.
 \Repeat
     \State Sample initial conditions $\{x_i\}_{i=1}^B \sim \rho$.
@@ -2858,26 +2910,28 @@ the maximum number of Newton iterations.
         \State Integrate forward $\dot{z}_{x_i} = f\bigl(t, z_{x_i}, u^\star(t, z_{x_i};\theta^{(k)})\bigr)$ with $z_{x_i}(0)=x_i$.
         \State At each integration step, evaluate $u^\star$ via:
         \Statex \hspace{1.5em} $p_x \leftarrow \nabla_x\phi_{\theta^{(k)}}(t, z_{x_i})$ (autodiff).
-        \Statex \hspace{1.5em} Run Newton iterations \eqref{eq:newton} until $\|\nabla_u\mathcal{H}\| < \varepsilon_{\text{Newton}}$ (or $K$ steps).
-        \Statex \hspace{1.5em} Return $u^\star$; apply \texttt{stop\_grad} to the Newton output.
+        \Statex \hspace{1.5em} Run fixed-point iterations $u \leftarrow u + \alpha\,\nabla_u\mathcal{H}(t, z_{x_i}, p_x, u)$ until $\|u_{\text{new}} - u_{\text{old}}\| < \varepsilon_{\text{tol}}$ (or $K$ steps).
+        \Statex \hspace{1.5em} Return $u^\star$; apply \texttt{stop\_grad} to the fixed-point output.
         \State Record stopped trajectory points $\{\bar{z}_{x_i}(t_j)\}_{j=0}^M$ (\texttt{stop\_grad}).
     \EndFor
 
-    \Statex \textbf{Evaluate HJB residuals} at stopped trajectory points:
+    \Statex \textbf{Accumulate cost along stopped trajectories} (gradient tracked through $\phi_\theta$):
     \For{$i = 1$ to $B$}
-        \For{$j = 0$ to $M$}
-            \State Compute $u^\star\bigl(t_j, \bar{z}_{x_i}(t_j);\theta^{(k)}\bigr)$ via Newton (with \texttt{stop\_grad}).
-            \State Compute $\mathcal{R}\bigl(t_j, \bar{z}_{x_i}(t_j);\theta^{(k)}\bigr)$ via \eqref{eq:hjb_residual}.
+        \State $\text{running\_cost}_i \leftarrow 0$
+        \For{$k = 0$ to $M-1$}
+            \State $u^\star_k \leftarrow$ fixed-point iteration of $T_\theta$ at $(t_k, \bar{z}_{x_i}(t_k))$ [$K'$ tracked gradient steps; \texttt{stop\_grad} on convergence phase].
+            \State $\text{running\_cost}_i \mathrel{+}= h \cdot L(t_k, \bar{z}_{x_i}(t_k), u^\star_k)$.
         \EndFor
+        \State $\text{terminal\_cost}_i \leftarrow \alpha_G \cdot G(\bar{z}_{x_i}(T))$.
     \EndFor
 
-    \State Compute JFB loss $\widetilde{\mathcal{L}}(\theta^{(k)})$ via \eqref{eq:jfb_loss}.
+    \State Compute JFB loss $\widetilde{\mathcal{L}}(\theta^{(k)}) = \frac{1}{B}\sum_{i=1}^B\bigl[\alpha_L \cdot \text{running\_cost}_i + \text{terminal\_cost}_i\bigr]$.
     \State Backpropagate through $\phi_\theta$ only (channel 1; channel 2 blocked by \texttt{stop\_grad}) to obtain
     \Statex \hspace{1.5em} $\widetilde{\nabla}_\theta\mathcal{L} = \nabla_\theta\widetilde{\mathcal{L}}(\theta^{(k)})$.
     \State Update parameters: $\theta^{(k+1)} = \theta^{(k)} - \eta\,\widetilde{\nabla}_\theta\mathcal{L}$.
 \Until{convergence}
 \State \textbf{Output:} $\phi_{\theta^\star}$, the trained value function.
-\State Feedback law at deployment: $u^\star(t,x) = \arg\sup_{u \in U}\mathcal{H}(t, x, \nabla_x\phi_{\theta^\star}(t,x), u)$, evaluated via Newton.
+\State Feedback law at deployment: $u^\star(t,x) = \arg\sup_{u \in U}\mathcal{H}(t, x, \nabla_x\phi_{\theta^\star}(t,x), u)$, evaluated via fixed-point iteration.
 \end{algorithmic}
 \end{algorithm}
 
@@ -2889,22 +2943,22 @@ The cost of one iteration of the algorithm above breaks down as follows.
 
 \textbf{Trajectory generation.} For each of $B$ trajectories with
 $M$ time steps, each step requires one forward pass and one backward pass
-through $\phi_\theta$ for $\nabla_x\phi_\theta$, plus $K$ Newton iterations
-each costing $O(m^3)$ (for the $m \times m$ linear solve). Total cost:
-$O(B \cdot M \cdot (P + K m^3))$.
+through $\phi_\theta$ for $\nabla_x\phi_\theta$, plus $K$ fixed-point iterations
+each costing $O(m)$ (one gradient evaluation of $\nabla_u\mathcal{H}$ per step). Total cost:
+$O(B \cdot M \cdot (P + K m))$.
 
-\textbf{Residual evaluation.} For each of $BM$ trajectory points,
-one forward pass through $\phi_\theta$ for $\partial_t\phi_\theta$ and
-$\nabla_x\phi_\theta$, plus $K$ Newton iterations. Total cost:
-$O(B \cdot M \cdot (P + Km^3))$.
+\textbf{Cost evaluation.} For each of $BM$ stopped trajectory points,
+evaluate $u^\star_k$ via $K'$ tracked fixed-point steps (each $O(m)$),
+then evaluate $L(t_k, \bar{z}_k, u^\star_k)$. Total cost:
+$O(B \cdot M \cdot (P + K'm))$.
 
 \textbf{Backpropagation.} Standard autodiff through $\phi_\theta$
 at $BM$ fixed points. Total cost: $O(B \cdot M \cdot P)$.
 
 The dominant cost is $O(B \cdot M \cdot P)$ --- linear in all of $B$, $M$,
 and $P$. This is identical to the cost of training a neural network on a
-fixed dataset of $BM$ points, with the only overhead being the Newton
-iterations (small for $m \ll P$) and the trajectory generation (which does
+fixed dataset of $BM$ points, with the only overhead being the fixed-point
+iterations ($O(KBMm)$, small for $m \ll P$) and the trajectory generation (which does
 not require gradient tracking and can be parallelized over $B$).
 
 Compare with exact backpropagation: the adjoint method would add
@@ -2923,13 +2977,13 @@ state $x$ at time $t$:
 
 \begin{enumerate}
     \item Compute $\nabla_x\phi_{\theta^\star}(t,x)$ by autodiff.
-    \item Run Newton iterations to solve
-          $\nabla_u\mathcal{H}(t,x,\nabla_x\phi_{\theta^\star},u) = 0$.
+    \item Run fixed-point iterations $u \leftarrow u + \alpha\,
+          \nabla_u\mathcal{H}(t,x,\nabla_x\phi_{\theta^\star},u)$ until convergence.
     \item Apply $u^\star$ to the system.
 \end{enumerate}
 
-The deployment cost per control evaluation is $O(P + Km^3)$ --- one network
-forward-backward pass plus $K$ Newton steps. This is real-time capable for
+The deployment cost per control evaluation is $O(P + Km)$ --- one network
+forward-backward pass plus $K$ fixed-point steps. This is real-time capable for
 moderate $P$ and small $m$, which covers the physical problems in the paper.
 Crucially, deployment requires \textit{no} BVP solve, no trajectory
 integration, and no knowledge of the initial condition. The entire optimal
@@ -2971,12 +3025,14 @@ does not, and showed precisely why prior neural HJB methods still required
 explicit Hamiltonians despite knowing this identity.
 
 \textbf{Part IV} introduced the neural network parameterization
-$\phi_\theta$, the HJB residual loss, and the self-supervised training
-signal. It identified the temporal coupling as the source of intractable
-exact gradient computation, split the gradient into Term I and Term II,
-bounded $\|E(\theta)\|$ relative to
-$\|\widetilde{\nabla}_\theta\mathcal{L}\|$, proved the descent direction
-theorem, and presented the complete JFB algorithm.
+$\phi_\theta$, the control objective $J(\theta)$, and the trajectory rollout
+training procedure. It identified that training on $J(\theta)$ via trajectory
+rollout creates temporal coupling --- each trajectory state $z_k$ depends on
+all preceding controls, which depend on $\theta$ --- making exact gradient
+computation intractable. It split the gradient into Term~I and Term~II,
+established a pointwise inner product bound between the true and JFB gradient
+integrands, lifted it to the time-integrated gradient via Lemma~4, proved the
+descent direction theorem (Theorem~1), and presented the complete JFB algorithm.
 
 \medskip\hrule\medskip
 
@@ -2993,19 +3049,19 @@ implicit solve, and it automatically satisfies the integrability condition
 of the Lagrangian submanifold structure. Without $\phi_\theta$, there is no
 costate, no Hamiltonian structure, and no implicit solve.
 
-\textbf{Ingredient 2: The PMP--HJB bridge with implicit Newton solve.}
+\textbf{Ingredient 2: The PMP--HJB bridge with implicit fixed-point solve.}
 The identity $p_x = \nabla_x\phi_\theta$ converts the implicit optimality
 condition $\nabla_u\mathcal{H}(t,z_x,p_x,u^\star) = 0$ into a fixed-point
-equation solvable by Newton's method, without requiring a closed-form $g$.
+equation solvable by gradient ascent on $\mathcal{H}$ w.r.t.\ $u$, without requiring a closed-form $g$.
 This is what extends the class of problems from explicit to implicit
 Hamiltonians. Without this ingredient, the method reduces to prior work that
 requires $g$.
 
-\textbf{Ingredient 3: Jacobian-Free Backpropagation.} The Newton solve makes
+\textbf{Ingredient 3: Jacobian-Free Backpropagation.} The fixed-point solve makes
 trajectory generation possible for implicit Hamiltonians, but it also adds
 a layer of coupling between $\theta$ and the trajectories through
 \eqref{eq:dustar_dtheta}. JFB removes this coupling by stopping gradients
-through both the trajectory and the Newton iterations, reducing exact
+through both the trajectory and the fixed-point iterations, reducing exact
 $O(BmMP)$ backpropagation to $O(BMP)$ autodiff while preserving the descent
 direction guarantee. Without JFB, the training loop is computationally
 intractable for networks with more than a few thousand parameters.
@@ -3037,30 +3093,23 @@ For completeness, we note the assumptions on which the method rests and the
 questions they leave open.
 
 \textbf{Strict concavity of $\mathcal{H}$ in $u$.} This is required for
-uniqueness of $u^\star$, invertibility of the Newton Jacobian, and the IFT
+uniqueness of $u^\star$, invertibility of the Jacobian $\nabla^2_{uu}\mathcal{H}$, and the IFT
 smoothness of $u^\star(\theta)$. For problems where $\mathcal{H}$ is not
 concave in $u$ --- e.g., bang-bang problems where $\mathcal{H}$ is linear
-in $u$ --- the Newton solve has no unique solution and the method as stated
+in $u$ --- the fixed-point solve has no unique solution and the method as stated
 does not apply. Extending to non-concave or discontinuous optimal controls
 remains an open problem.
 
-\textbf{Smoothness of $\phi$.} The bridge identity and the HJB residual
-loss both require $\phi \in C^1$. When the value function develops kinks
+\textbf{Smoothness of $\phi$.} The bridge identity and the control
+objective both require $\phi \in C^1$. When the value function develops kinks
 (caustics), the network $\phi_\theta$ will attempt to approximate a
 non-smooth function with a smooth one, introducing approximation error that
 does not decrease with network size. Incorporating viscosity solution
 structure into the architecture is an open research direction.
 
-\textbf{Quality of the descent direction bound.} The bound \eqref{eq:E_bound}
-requires $\Delta t$ sufficiently small, which in practice means fine time
-discretization. For problems where fine discretization is expensive, the
-descent direction guarantee may not hold tightly and training may be slower
-or less stable. Adaptive time stepping strategies that maintain the bound
-while minimizing computational cost are not addressed by the paper.
-
-\textbf{Scalability of the Newton solve.} For control dimensions $m \gg 1$,
-the $m \times m$ linear solve in each Newton step becomes expensive, and
-quasi-Newton approximations introduce their own convergence rate penalties.
+\textbf{Scalability of the fixed-point solve.} For control dimensions $m \gg 1$,
+the cost of each gradient ascent step is $O(m)$, but more iterations may be
+needed for convergence (larger contraction constant $\gamma$).
 The paper demonstrates the method for $m = 1$ (space shuttle) and $m = 2$
 (bicycle); scaling to $m \sim 10$ or higher remains to be demonstrated.
 ```

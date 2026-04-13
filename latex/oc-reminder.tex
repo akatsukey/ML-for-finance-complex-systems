@@ -114,6 +114,21 @@
   title={TL;DR - IMPORTANT - DO NOT SKIP}
 }
 
+% Extra Information box (use for side notes / extra context)
+% NOTE: define an explicit purple to avoid class/package color-name clashes.
+\definecolor{extrainfopurple}{RGB}{110,55,160}
+\newtcolorbox{extrainfobox}{
+  enhanced,
+  breakable,
+  colback=extrainfopurple!5,
+  colframe=extrainfopurple!80!black,
+  boxrule=0.6pt,
+  arc=1.2mm,
+  left=1.5mm,right=1.5mm,top=1.2mm,bottom=1.2mm,
+  fonttitle=\bfseries,
+  title={Extra Information -- Optional}
+}
+
 % Examples box
 \newtcolorbox{examplebox}{
   enhanced,
@@ -2125,6 +2140,7 @@ injecting the gradient signal into $\theta$ through $\phi_\theta$.
 
 \subsubsection{Why Neural Networks}
 
+\begin{extrainfobox}
 The value function $\phi(t,x)$ is a scalar field on the $(n+1)$-dimensional
 domain $[0,T] \times \mathbb{R}^n$. Classical methods represent it on a grid,
 which requires $O(N^n)$ storage and computation --- intractable for $n \gtrsim
@@ -2152,6 +2168,7 @@ substitution $p_x = \nabla_x\phi_\theta$ and for the fixed-point iteration.
 In a grid-based method, computing $\nabla_x\phi$ requires finite differences
 involving $2n$ neighboring grid points --- another $O(n)$ factor on top of the
 grid cost. With a network, it costs the same as one forward pass.
+\end{extrainfobox}
 
 \medskip\hrule\medskip
 
@@ -2218,7 +2235,10 @@ $\alpha_{\text{adj}} = [0,0]$). The actual training loss is the control
 objective $J(\theta)$, defined below and used in the training loop of
 Section~\ref{sec:training-temporal-coupling}. The fact that the HJB residual
 decreases during training even though it is never minimized is one of the
-paper's key empirical findings.
+paper's key empirical findings: minimizing $J(\theta)$ end-to-end implicitly
+pushes $\phi_\theta$ toward satisfying the HJB equation, by virtue of the
+PMP--HJB bridge established in Part~III.
+
 \end{quote}
 
 The paper trains $\phi_\theta$ by directly minimizing the \textbf{control
@@ -2243,16 +2263,6 @@ initial conditions:
     \label{eq:training_objective}
 \end{equation}
 
-The HJB residual $\mathcal{R}(t,x;\theta) = -\partial_t\phi_\theta
-+ H(t,x,\nabla_x\phi_\theta)$ is \emph{not} part of the training loss.
-It is computed during training as a diagnostic metric to verify that
-$\phi_\theta$ is converging toward the true value function, but its weight
-is set to zero in the optimizer. The fact that the HJB residual decreases
-during training even though it is never directly minimized is one of the
-paper's key empirical findings: minimizing $J(\theta)$ end-to-end implicitly
-pushes $\phi_\theta$ toward satisfying the HJB equation, by virtue of the
-PMP--HJB bridge established in Part~III.
-
 This choice of training loss has a direct consequence for the gradient
 computation. Because $J_x(\theta)$ depends on $\theta$ through entire
 rolled-out trajectories --- and each point on those trajectories was generated
@@ -2265,6 +2275,7 @@ Section~\ref{sec:training-temporal-coupling}.
 
 \subsubsection{Why Parameterizing $\phi_\theta$ Rather Than $u_\theta$}
 
+\begin{extrainfobox}
 An alternative approach --- used in reinforcement learning and direct policy
 optimization --- is to parameterize the control policy directly:
 $u_\theta(t,x) \approx u^\star(t,x)$. This avoids the need to solve any PDE
@@ -2297,11 +2308,13 @@ automatically is (by the Lagrangian submanifold structure of Section~\ref{subsec
 These three reasons together explain why the paper's architecture is
 $\phi_\theta$ rather than $u_\theta$, and why this choice is not merely
 conventional but is structurally necessary for the implicit Hamiltonian approach.
+\end{extrainfobox}
 
 \medskip\hrule\medskip
 
 \subsubsection{Prior Work and the Explicit Hamiltonian Requirement}
 
+\begin{extrainfobox}
 Several prior works parameterize the value function as a neural network and
 train it to satisfy the HJB equation. The most directly related are methods
 based on the \textbf{Hopf formula} and \textbf{data-driven HJB solvers} such as
@@ -2324,6 +2337,7 @@ by replacing $g$ with the fixed-point iteration of
 Section~\ref{sec:implicit-solve}, and replacing exact backpropagation through
 the rollout with JFB. This is the precise gap the paper fills in the landscape
 of neural HJB methods.
+\end{extrainfobox}
 
 \medskip
 
@@ -2462,6 +2476,7 @@ simply not feasible.
 
 \subsubsection{Temporal Coupling: A Summary}
 
+\begin{extrainfobox}
 The temporal coupling problem can be stated precisely in one sentence: the
 trajectories along which the control objective $\mathcal{L}(\theta)$ is
 evaluated depend on $\theta$, so $\nabla_\theta\mathcal{L}(\theta)$ has two
@@ -2479,11 +2494,13 @@ fixed-point solve, which itself depends on $\nabla_x\phi_\theta$ via
 \eqref{eq:dustar_dtheta}. The JFB approach of Section~\ref{sec:jfb} addresses both layers
 simultaneously by dropping Term II entirely and showing that Term I alone is
 sufficient for convergence.
+\end{extrainfobox}
 
 \medskip\hrule\medskip
 
 \subsubsection{The HJB Residual as a Diagnostic}
 
+\begin{extrainfobox}
 Although the training loss is the control objective $J(\theta)$, the HJB
 residual $\mathcal{R}(t,z;\theta) = -\partial_t\phi_\theta +
 H(t,z,\nabla_x\phi_\theta)$ is computed alongside each trajectory during
@@ -2505,6 +2522,7 @@ temporal coupling, but would lose the end-to-end structure and would require
 evaluating $H(t,x,\nabla_x\phi_\theta)$ --- the implicit supremum --- at
 every sample point as part of the loss itself, not just during trajectory
 generation.
+\end{extrainfobox}
 
 
 \subsection{The Gradient of the Control Objective and Its Two Terms}
@@ -2801,6 +2819,7 @@ is not.
 
 \subsubsection{Connection to Prior JFB Results}
 
+\begin{extrainfobox}
 The name \textbf{Jacobian-Free Backpropagation} was introduced in the
 context of implicit neural networks by Fung et al.\ (2022), where it refers
 to the same stop-gradient idea applied to fixed-point layers: instead of
@@ -2820,6 +2839,7 @@ implicit network setting. The pointwise inner product bound
 (Theorem~1) are therefore a genuine contribution of the paper, providing the
 first theoretical guarantee for JFB applied to trajectory optimization with
 implicit Hamiltonians.
+\end{extrainfobox}
 
 
 \subsection{Jacobian-Free Backpropagation --- The Complete Algorithm}
@@ -2885,57 +2905,57 @@ $\bar{z}_k$ are detached, blocking the trajectory coupling (channel~2), and
 through --- only the final $K'$ applications of $T_\theta$ carry gradient.
 This is the two-layer JFB approximation handling both the trajectory coupling
 and the implicit Hamiltonian coupling identified in
-Section~\ref{sec:training-temporal-coupling}.
+Section~\ref{sec:training-temporal-coupling}. Next comes the full algorithm.
 
-\medskip\hrule\medskip
+\subsubsection{Complete algorithm}
 
-\subsubsection{The Complete Algorithm}
-
-We now state the full training procedure. Let $\phi_\theta$ be parameterized
-with hard terminal enforcement \eqref{eq:hard_terminal}. Let
-$\varepsilon_{\text{tol}}$ be the fixed-point convergence tolerance, $\alpha$
-the gradient ascent step size, $K$ the maximum number of fixed-point
-iterations, and $K'$ the number of tracked gradient steps.
 
 \begin{algorithm}[t]
 \caption{End-to-end training with implicit Hamiltonians and Jacobian-Free Backpropagation (JFB)}
+\label{alg:jfb-training}
 \begin{algorithmic}[1]
-\Require Dynamics $f$, running cost $L$, terminal cost $G$, control set $U$, initial-condition distribution $\rho$, learning rate $\eta$, batch size $B$, time points $\{t_j\}_{j=0}^M$, step size $h=T/M$, fixed-point tolerance $\varepsilon_{\text{tol}}$, gradient ascent step size $\alpha$, max fixed-point iterations $K$, tracked iterations $K'$, cost weights $\alpha_L$, $\alpha_G$.
-\State Initialize $\theta^{(0)}$ randomly.
+\Require Dynamics $f$, running cost $L$, terminal cost $G$, initial-condition distribution $\rho$,
+         learning rate $\eta$, batch size $B$, number of time steps $N_t$, step size $h=T/N_t$,
+         fixed-point tolerance $\varepsilon_{\mathrm{tol}}$, ascent step size $\alpha$,
+         max fixed-point iterations $K$, tracked iterations $K'$, cost weights $\alpha_L$, $\alpha_G$.
+\Ensure Trained value function network $\phi_{\theta^\star}$.
+
+\State Initialize parameters $\theta$.
 \Repeat
-    \State Sample initial conditions $\{x_i\}_{i=1}^B \sim \rho$.
-
-    \Statex \textbf{Generate trajectories} (forward pass; no gradient tracking through dynamics):
-    \For{$i = 1$ to $B$}
-        \State Integrate forward $\dot{z}_{x_i} = f\bigl(t, z_{x_i}, u^\star(t, z_{x_i};\theta^{(k)})\bigr)$ with $z_{x_i}(0)=x_i$.
-        \State At each integration step, evaluate $u^\star$ via:
-        \Statex \hspace{1.5em} $p_x \leftarrow \nabla_x\phi_{\theta^{(k)}}(t, z_{x_i})$ (autodiff).
-        \Statex \hspace{1.5em} Run fixed-point iterations $u \leftarrow u + \alpha\,\nabla_u\mathcal{H}(t, z_{x_i}, p_x, u)$ until $\|u_{\text{new}} - u_{\text{old}}\| < \varepsilon_{\text{tol}}$ (or $K$ steps).
-        \Statex \hspace{1.5em} Return $u^\star$; apply \texttt{stop\_grad} to the fixed-point output.
-        \State Record stopped trajectory points $\{\bar{z}_{x_i}(t_j)\}_{j=0}^M$ (\texttt{stop\_grad}).
+  \State Sample initial conditions $\{x_i\}_{i=1}^{B} \sim \rho$.
+  \For{$i = 1$ to $B$}
+    \State $z \gets x_i$; \quad $\mathrm{running\_cost}_i \gets 0$.
+    \For{$k = 0$ to $N_t-1$}
+      \State $t \gets k h$.
+      \State $p_x \gets \nabla_x\phi_\theta(t,z)$ \Comment{autodiff; detach $z$ in code}
+      \State $u \gets \mathbf{0}$
+      \For{$\ell = 1$ to $K$} \Comment{converge to $u^\star$; no gradient tracking}
+        \State $u_{\mathrm{new}} \gets u + \alpha\,\nabla_u\mathcal{H}(t,z,p_x,u)$
+        \If{$\|u_{\mathrm{new}}-u\| < \varepsilon_{\mathrm{tol}}$}
+          \State $u \gets u_{\mathrm{new}}$
+          \State \textbf{break}
+        \EndIf
+        \State $u \gets u_{\mathrm{new}}$
+      \EndFor
+      \For{$j = 1$ to $K'$} \Comment{$K'$ tracked steps; gradient flows through $\phi_\theta$}
+        \State $u \gets u + \alpha\,\nabla_u\mathcal{H}(t,z,p_x,u)$
+      \EndFor
+      \State $u_k^\star \gets u$
+      \State $\mathrm{running\_cost}_i \gets \mathrm{running\_cost}_i + h\,L(t,z,u_k^\star)$
+      \State $z \gets z + h\,f(t,z,u_k^\star)$ \Comment{detach state transitions in code}
     \EndFor
-
-    \Statex \textbf{Accumulate cost along stopped trajectories} (gradient tracked through $\phi_\theta$):
-    \For{$i = 1$ to $B$}
-        \State $\text{running\_cost}_i \leftarrow 0$
-        \For{$k = 0$ to $M-1$}
-            \State $u^\star_k \leftarrow$ fixed-point iteration of $T_\theta$ at $(t_k, \bar{z}_{x_i}(t_k))$ [$K'$ tracked gradient steps; \texttt{stop\_grad} on convergence phase].
-            \State $\text{running\_cost}_i \mathrel{+}= h \cdot L(t_k, \bar{z}_{x_i}(t_k), u^\star_k)$.
-        \EndFor
-        \State $\text{terminal\_cost}_i \leftarrow \alpha_G \cdot G(\bar{z}_{x_i}(T))$.
-    \EndFor
-
-    \State Compute JFB loss $\widetilde{\mathcal{L}}(\theta^{(k)}) = \frac{1}{B}\sum_{i=1}^B\bigl[\alpha_L \cdot \text{running\_cost}_i + \text{terminal\_cost}_i\bigr]$.
-    \State Backpropagate through $\phi_\theta$ only (channel 1; channel 2 blocked by \texttt{stop\_grad}) to obtain
-    \Statex \hspace{1.5em} $\widetilde{\nabla}_\theta\mathcal{L} = \nabla_\theta\widetilde{\mathcal{L}}(\theta^{(k)})$.
-    \State Update parameters: $\theta^{(k+1)} = \theta^{(k)} - \eta\,\widetilde{\nabla}_\theta\mathcal{L}$.
+    \State $\mathrm{terminal\_cost}_i \gets \alpha_G\,G(z)$
+  \EndFor
+  \State $\widetilde{\mathcal{L}}(\theta) \gets \frac{1}{B}\sum_{i=1}^{B}\bigl[\alpha_L\,\mathrm{running\_cost}_i + \mathrm{terminal\_cost}_i\bigr]$
+  \State $\theta \gets \theta - \eta\,\nabla_\theta\widetilde{\mathcal{L}}(\theta)$ \Comment{JFB gradient (Term I)}
 \Until{convergence}
-\State \textbf{Output:} $\phi_{\theta^\star}$, the trained value function.
-\State Feedback law at deployment: $u^\star(t,x) = \arg\sup_{u \in U}\mathcal{H}(t, x, \nabla_x\phi_{\theta^\star}(t,x), u)$, evaluated via fixed-point iteration.
+
+\State \textbf{Deployment:} compute $p_x=\nabla_x\phi_{\theta^\star}(t,x)$ and iterate $u \gets u + \alpha\,\nabla_u\mathcal{H}(t,x,p_x,u)$ until convergence.
 \end{algorithmic}
 \end{algorithm}
 
-\medskip\hrule\medskip
+
+
 
 \subsubsection{Computational Cost Per Iteration}
 

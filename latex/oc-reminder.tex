@@ -63,6 +63,8 @@
 \usepackage{xcolor}         % colors
 \usepackage[most]{tcolorbox} % colored boxes
 \usepackage{listings}        % code blocks
+\usepackage{algorithm}       % algorithms
+\usepackage{algpseudocode}   % algorithmic pseudocode
 
 % Listings style for code snippets
 \lstset{
@@ -195,7 +197,7 @@
 \medskip\hrule\medskip
 
 \begin{abstract}
-  Explication pas-à-pas des contributions du papier qui devrait permettre à quiquonque n'ayant jamais été confronté à du Control Optimal de lire le papier et essayer de comprendre le code, en particulier les examples avec Hamiltonien sans forme fermée. 
+  Explication pas-à-pas des contributions du papier qui devrait permettre même à ceux n'ayant jamais été confronté à du Contrôle Optimal de lire le papier et essayer de comprendre le code, en particulier les examples avec Hamiltonien sans forme fermée. 
 \end{abstract}
 
 
@@ -380,7 +382,7 @@ To summarize cleanly, we assume throughout Part I: $f$ is $C^1$ in $(t,z_x,u)$ a
 
 \medskip\hrule\medskip
 
-\subsection{The Augmented Action --- Physics Style}
+\subsection{Deriving the equations}
 \label{sec:augmented-action}
 
 \medskip\hrule\medskip
@@ -490,7 +492,6 @@ For $\delta S = 0$ to hold for \textbf{all} independent variations $\delta p_x$,
 
 \subsubsection{The PMP equations}
 
-\begin{tldrbox}
 \textbf{The four stationarity conditions, written compactly, are:}
 \begin{align*}
 \dot{z}_x(t) &= f\bigl(t, z_x(t), u(t)\bigr), & & z_x(0) = x, \\
@@ -500,10 +501,11 @@ For $\delta S = 0$ to hold for \textbf{all} independent variations $\delta p_x$,
 
 \smallskip
 
-These correspond to (i) recovery of the dynamics from $\delta p_x$, (ii) the adjoint/costate equation from $\delta z_x$, (iii) stationarity in $u$ from $\delta u$, and (iv) the transversality condition from the boundary term at $t=T$. The minus sign in $p_x(T)$ will shortly be absorbed into the sign convention of the Hamiltonian.
+These correspond to (i) recovery of the from $\delta p_x$, (ii) the adjoint/costate equation from $\delta z_x$, (iii) stationarity in $u$ from $\delta u$, and (iv) the transversality condition from the boundary term at $t=T$. The minus sign in $p_x(T)$ will shortly be absorbed into the sign convention of the Hamiltonian.
 
 \medskip\hrule\medskip
 
+\begin{tldrbox}
 \subsubsection{Recognizing the Hamiltonian}
 
 Now collect the three conditions involving $p_x$ and $z_x$ and observe that they all derive from a single scalar function. Define the \textbf{control Hamiltonian}:
@@ -1077,6 +1079,7 @@ for any $\delta t > 0$. The value function at $(t, x)$ equals the minimum over c
 \medskip\hrule\medskip
 
 \subsubsection{From Bellman's Principle to the HJB Equation}
+This subsection derives the HJB equation from first principles, which is not strictly necessary to follow the paper, but is quite instructive and easy to read.
 
 \begin{mathrequirementsbox}
 We now take $\delta t \to 0$ to convert Bellman's principle into a PDE. Assume $\phi$ is $C^1$ in both arguments — we will comment on when this fails shortly.
@@ -1108,11 +1111,14 @@ Divide by $\delta t$ and take $\delta t \to 0$:
 
 $$0 = \frac{\partial \phi}{\partial t}(t, x) + \inf_{u \in U} \left\{ L(t, x, u) + \left\langle \nabla_x \phi(t, x),\, f(t, x, u) \right\rangle \right\}$$
 
+\begin{tldrbox}
+    
 Rearranging:
 
 $$-\frac{\partial \phi}{\partial t}(t, x) = \inf_{u \in U} \left\{ L(t, x, u) + \left\langle \nabla_x \phi(t, x),\, f(t, x, u) \right\rangle \right\}$$
 
 with terminal condition $\phi(T, x) = G(x)$. This is the \textbf{Hamilton-Jacobi-Bellman equation}. It is a first-order PDE in $(n+1)$ variables, solved \textbf{backward in time} from the terminal condition $\phi(T, \cdot) = G$.
+\end{tldrbox}
 \end{mathrequirementsbox}
 
 \medskip\hrule\medskip
@@ -1127,7 +1133,7 @@ H(t, x, p) = \sup_{u \in U} \left[ -\langle p, f(t, x, u) \rangle - L(t, x, u) \
 \label{eq:optimized-hamiltonian}
 \end{equation}
 
-This is the \textbf{Legendre-Fenchel transform} of $L$ with respect to $u$, composed with $f$. With this definition, the HJB equation takes the compact form:
+This is the \textbf{Legendre-Fenchel transform} of $L$ with respect to $u$, composed with $f$ (see Section~\ref{sec:legendre-fenchel-viewpoint}). With this definition, the HJB equation takes the compact form:
 
 \begin{equation}
 -\frac{\partial \phi}{\partial t}(t, x) + H(t, x, \nabla_x \phi(t, x)) = 0, \qquad \phi(T, x) = G(x)
@@ -1154,13 +1160,7 @@ This is a \textbf{true feedback law}: given any state $x$ at any time $t$, compu
 
 \medskip\hrule\medskip
 
-\subsubsection{Viscosity Solutions: When $\phi$ Is Not Smooth}
 
-\begin{mathrequirementsbox}
-A critical mathematical point must be addressed. The derivation above assumed $\phi \in C^1$. In general, the value function is \textbf{not} smooth — it can develop kinks and discontinuities in its gradient even when the data $f$, $L$, $G$ are smooth. This happens when optimal trajectories cross (forming caustics, as in geometrical optics) or when bang-bang optimal controls create switching surfaces.
-
-At points where $\phi$ is not differentiable, the HJB equation does not hold in the classical sense. The correct notion of solution is the \textbf{viscosity solution}, introduced by Crandall and Lions in 1983. A viscosity solution replaces pointwise derivatives with one-sided test function conditions and is the unique weak solution of the HJB equation under mild assumptions. For our purposes, the key fact is that the value function $\phi$ is always a viscosity solution of the HJB equation, even when not classically differentiable. When $\phi$ is smooth at a point $(t,x)$, the viscosity solution coincides with the classical one. Since neural network approximations of $\phi$ produce smooth functions by construction, they implicitly work in the regime where $\phi$ is smooth — a standing assumption that is reasonable for many practical problems and is implicitly made throughout the paper.
-\end{mathrequirementsbox}
 
 
 \subsection{The Curse of Dimensionality and the Failure of Grid-Based HJB}
@@ -1170,7 +1170,7 @@ At points where $\phi$ is not differentiable, the HJB equation does not hold in 
 
 \subsubsection{Why the HJB PDE Cannot Be Solved Directly in High Dimensions}
 
-The HJB equation derived in Section~\ref{sec:hjb},
+The HJB equation, first written in the compact Hamiltonian form in \eqref{eq:hjb-hamiltonian-form},
 
 \begin{equation}
     -\frac{\partial \phi}{\partial t}(t, x) + H(t, x, \nabla_x \phi(t, x)) = 0, \qquad \phi(T, x) = G(x),
@@ -1334,6 +1334,9 @@ The timing plot shows the computation time growing exponentially on a log scale 
 
 \medskip\hrule\medskip
 
+\subsection{Final insights on HJB}
+\label{sec:HJB-final-insights}
+
 \subsubsection{The Situation So Far: Two Failures, One Gap}
 
 At this point in the document we have established the following precise picture.
@@ -1344,15 +1347,59 @@ At this point in the document we have established the following precise picture.
 
 \textbf{Neither approach dominates the other.} They trade one exponential for another in different variables. For the high-dimensional, long-horizon problems the paper targets, both fail simultaneously and for different reasons.
 
-The next part develops the PMP--HJB bridge and shows how this identity can be combined with implicit solves and neural parameterization.
+The next part, after a math interlude for the curious reader, develops the PMP--HJB bridge and shows how this identity can be combined with implicit solves and neural parameterization. 
 
 
-\subsection{The Optimized Hamiltonian, Feedback Law, and the Explicit-Hamiltonian Bottleneck}
+
+\subsubsection{Open-Loop vs.\ Feedback: A Precise Comparison}
+
+\begin{tldrbox}
+We can now state precisely the relationship between the PMP open-loop solution
+and the HJB feedback solution for the same problem.
+
+Given an initial condition $x$ at $t=0$, the PMP produces a trajectory
+$(z_x^\star(t), p_x^\star(t))$ and an open-loop control $u^\star(t) =
+g(t, z_x^\star(t), p_x^\star(t))$. This control is optimal \textit{only along
+the trajectory $z_x^\star$}. If at any time $s \in (0,T)$ the state is perturbed
+to $z_x^\star(s) + \varepsilon$, the pre-computed control $u^\star(t)$ for
+$t > s$ is no longer optimal for the perturbed state --- it was designed for the
+unperturbed trajectory.
+
+The HJB feedback law $u^\star(t,x) = \arg\sup_u \mathcal{H}(t, x, \nabla_x
+\phi(t,x), u)$ is optimal for \textit{any} state $x$ at \textit{any} time $t$.
+If the system is perturbed at time $s$ to state $\tilde{x}$, the feedback law
+immediately provides the optimal action $u^\star(s, \tilde{x})$ for the new
+state, without any re-computation. This is the \textbf{closed-loop} property
+and it is what makes feedback control robust in practice.
+
+The two are consistent along the optimal trajectory: the open-loop control
+$u^\star(t)$ produced by PMP agrees with the feedback law evaluated along
+$z_x^\star(t)$:
+
+\begin{equation}
+    u^\star_{\text{PMP}}(t) = \arg\sup_{u \in U}\,
+    \mathcal{H}(t, z_x^\star(t), \nabla_x\phi(t, z_x^\star(t)), u) = u^\star_{\text{HJB}}(t, z_x^\star(t))
+\end{equation}
+
+The precise PMP--HJB identity that underpins this agreement is proved in Part III.
+\end{tldrbox}
+
+\subsection{Mathematical subtleties of HJB for those interested}
 \label{sec:optimized-hamiltonian}
 
 \medskip\hrule\medskip
 
+\subsubsection{Viscosity Solutions: When $\phi$ Is Not Smooth}
+
+\begin{mathrequirementsbox}
+A critical mathematical point must be addressed. The derivation above assumed $\phi \in C^1$. In general, the value function is \textbf{not} smooth — it can develop kinks and discontinuities in its gradient even when the data $f$, $L$, $G$ are smooth. This happens when optimal trajectories cross (forming caustics, as in geometrical optics) or when bang-bang optimal controls create switching surfaces.
+
+At points where $\phi$ is not differentiable, the HJB equation does not hold in the classical sense. The correct notion of solution is the \textbf{viscosity solution}, introduced by Crandall and Lions in 1983. A viscosity solution replaces pointwise derivatives with one-sided test function conditions and is the unique weak solution of the HJB equation under mild assumptions. For our purposes, the key fact is that the value function $\phi$ is always a viscosity solution of the HJB equation, even when not classically differentiable. When $\phi$ is smooth at a point $(t,x)$, the viscosity solution coincides with the classical one. Since neural network approximations of $\phi$ produce smooth functions by construction, they implicitly work in the regime where $\phi$ is smooth — a standing assumption that is reasonable for many practical problems and is implicitly made throughout the paper.
+\end{mathrequirementsbox}
+
+
 \subsubsection{The Legendre--Fenchel Viewpoint}
+\label{sec:legendre-fenchel-viewpoint}
 
 \begin{mathrequirementsbox}
 The function $H(t, x, p)$ defined in \eqref{eq:H_def} is not just a notational
@@ -1396,91 +1443,6 @@ of the canonical momentum, $f(t,x,u)$ plays the role of $\dot{q}$, and the
 supremum over $u$ plays the role of the Legendre transform. The analogy is
 exact when the control $u$ is unconstrained and $L$ is strictly convex in $u$.
 \end{mathrequirementsbox}
-
-\medskip\hrule\medskip
-
-\subsubsection{Feedback Law and the Explicit-Hamiltonian Bottleneck}
-
-Once $\phi$ is known, the optimal feedback control is recovered by:
-
-\begin{equation}
-    u^\star(t, x) = \arg\sup_{u \in U}\,
-    \mathcal{H}(t, x, \nabla_x \phi(t, x), u).
-    \label{eq:feedback_law}
-\end{equation}
-
-This is the central formula connecting the value function to the control policy.
-Its structure deserves careful reading. 
-
-The formula \eqref{eq:feedback_law} defines a \textbf{true feedback law}: a map
-$(t, x) \mapsto u^\star$ that can be evaluated at any state at any time without
-solving any BVP, without knowing the initial condition, and without simulating
-any trajectory. This is the fundamental advantage of the value function approach.
-
-However, evaluating \eqref{eq:feedback_law} requires solving an $\arg\sup$ over
-$u$. In the explicit case this optimization has a usable closed form. In the
-implicit case it does not, and each control evaluation requires a numerical
-inner solve. This is the precise explicit-Hamiltonian bottleneck.
-
-The same bottleneck appears inside classical grid-based HJB. At each grid point
-and time step, one must evaluate
-\begin{equation}
-    H(t, x, p) = \sup_{u \in U} \left[ -\langle p, f(t,x,u)\rangle
-    - L(t,x,u) \right],
-\end{equation}
-and without a closed form this becomes an additional iterative computation at
-every point. Thus classical HJB is constrained not by the existence of $H$, but
-by the repeated lack of a cheap closed-form evaluation of the optimizing control.
-
-\medskip\hrule\medskip
-
-\subsubsection{Summary: The HJB Equation in Its Final Form}
-
-The Hamilton-Jacobi-Bellman equation in Hamiltonian form is:
-
-\begin{equation}
-    \boxed{
-    -\frac{\partial \phi}{\partial t}(t, x)
-    + H(t, x, \nabla_x \phi(t, x)) = 0,
-    \qquad \phi(T, x) = G(x),
-    }
-    \label{eq:hjb_H}
-\end{equation}
-
-where $H(t,x,p) = \sup_{u \in U} \mathcal{H}(t,x,p,u)$ is the optimized
-Hamiltonian, convex in $p$ for all $(t,x)$. Its solution $\phi(t,x)$ is the
-value function encoding the optimal cost-to-go from every state simultaneously.
-The optimal feedback control is $u^\star(t,x) = \arg\sup_{u \in U}
-\mathcal{H}(t, x, \nabla_x\phi(t,x), u)$. The geometric equivalence with PMP is
-developed rigorously in Part III.
-
-
-
-\subsection{The Optimal Feedback Control from the Value Function}
-\label{sec:feedback-control}
-
-\medskip\hrule\medskip
-
-\subsubsection{From PDE Solution to Control Policy}
-
-Section~\ref{sec:optimized-hamiltonian} established the HJB equation and its solution $\phi(t,x)$. We now address
-the direct policy extraction map $(t,x) \mapsto u^\star(t,x)$.
-
-Suppose $\phi$ is known and $C^1$. At any state $x$ at time $t$, the optimal
-feedback control is:
-
-\begin{equation}
-    u^\star(t, x) = \arg\sup_{u \in U}\,
-    \mathcal{H}(t, x, \nabla_x \phi(t, x), u)
-    = \arg\sup_{u \in U}
-    \left[ -\langle \nabla_x \phi(t,x),\, f(t,x,u) \rangle
-    - L(t,x,u) \right].
-\end{equation}
-
-This is the complete feedback law. It maps any $(t,x)$ to the optimal action
-by computing $\nabla_x\phi(t,x)$ and maximizing $\mathcal{H}$ over $u$. The
-result is a \textbf{closed-loop policy} and is robust to state perturbations in
-a way precomputed open-loop controls are not.
 
 \medskip\hrule\medskip
 
@@ -1551,40 +1513,6 @@ The quality of the control policy is directly tied to the quality of the HJB
 residual.
 \end{mathrequirementsbox}
 
-\medskip\hrule\medskip
-
-\subsubsection{Open-Loop vs.\ Feedback: A Precise Comparison}
-
-\begin{tldrbox}
-We can now state precisely the relationship between the PMP open-loop solution
-and the HJB feedback solution for the same problem.
-
-Given an initial condition $x$ at $t=0$, the PMP produces a trajectory
-$(z_x^\star(t), p_x^\star(t))$ and an open-loop control $u^\star(t) =
-g(t, z_x^\star(t), p_x^\star(t))$. This control is optimal \textit{only along
-the trajectory $z_x^\star$}. If at any time $s \in (0,T)$ the state is perturbed
-to $z_x^\star(s) + \varepsilon$, the pre-computed control $u^\star(t)$ for
-$t > s$ is no longer optimal for the perturbed state --- it was designed for the
-unperturbed trajectory.
-
-The HJB feedback law $u^\star(t,x) = \arg\sup_u \mathcal{H}(t, x, \nabla_x
-\phi(t,x), u)$ is optimal for \textit{any} state $x$ at \textit{any} time $t$.
-If the system is perturbed at time $s$ to state $\tilde{x}$, the feedback law
-immediately provides the optimal action $u^\star(s, \tilde{x})$ for the new
-state, without any re-computation. This is the \textbf{closed-loop} property
-and it is what makes feedback control robust in practice.
-
-The two are consistent along the optimal trajectory: the open-loop control
-$u^\star(t)$ produced by PMP agrees with the feedback law evaluated along
-$z_x^\star(t)$:
-
-\begin{equation}
-    u^\star_{\text{PMP}}(t) = \arg\sup_{u \in U}\,
-    \mathcal{H}(t, z_x^\star(t), \nabla_x\phi(t, z_x^\star(t)), u) = u^\star_{\text{HJB}}(t, z_x^\star(t))
-\end{equation}
-
-The precise PMP--HJB identity that underpins this agreement is proved in Part III.
-\end{tldrbox}
 
 \pagebreak
 
@@ -1620,7 +1548,7 @@ Recall that the HJB equation is a first-order PDE in $(n+1)$ variables:
 
 \begin{equation}
     \phi_t + H(t, x, \nabla_x \phi) = 0, \qquad \phi(T, x) = G(x).
-    \label{eq:hjb_char}\label{eq:hjb}
+    \label{eq:hjb_char}
 \end{equation}
 
 For a general first-order PDE $\mathcal{F}(t, x, \phi, \phi_t, p) = 0$ where
@@ -1659,6 +1587,8 @@ $t$.
 \medskip\hrule\medskip
 
 \subsubsection{The Characteristics Are the PMP Trajectories}
+\begin{mathrequirementsbox}
+\noindent\textbf{The characteristics are the PMP trajectories.}
 
 We now identify the characteristic equations \eqref{eq:char_x}--\eqref{eq:char_p}
 with the PMP system. Recall from Section~\ref{sec:optimized-hamiltonian} that:
@@ -1704,11 +1634,13 @@ propagates the value function backward in time along curves that are precisely
 the forward-time optimal trajectories of PMP. The two frameworks solve the same
 problem by propagating information in opposite temporal directions along the
 same set of curves.
+\end{mathrequirementsbox}
 
 \medskip\hrule\medskip
 
 \subsubsection{Deriving the Identity $p_x = \nabla_x \phi$}
 
+\begin{mathrequirementsbox}
 Let $(z_x^\star(t), u^\star(t))$ be an optimal trajectory-control pair, and let
 $p_x^\star(t)$ be the associated PMP costate with terminal condition
 $p_x^\star(T) = \nabla G(z_x^\star(T))$. Assume $\phi$ is smooth on a
@@ -1719,7 +1651,7 @@ neighborhood of this trajectory.
 \noindent\textbf{Proposition.} \label{prop:gradient-identity} \textit{For all } $t \in [0,T]$,
 \begin{equation}
     p_x^\star(t) = \nabla_x \phi(t, z_x^\star(t)).
-    \label{eq:bridge}\label{eq:pmp-hjb-gradient-identity}
+    \label{eq:bridge}
 \end{equation}
 
 \medskip
@@ -1756,6 +1688,7 @@ neighborhood of this trajectory.
     condition. By uniqueness of ODE solutions (Picard--Lindel\"of),
     $q_1(t)=q_2(t)$ on $[0,T]$, proving \eqref{eq:bridge}. \hfill $\square$
 \end{enumerate}
+\end{mathrequirementsbox}
 
 \medskip\hrule\medskip
 
@@ -1804,6 +1737,7 @@ differentiating through that solve tractable.
 
 \begin{physicsinsightbox}
 \subsubsection{The Symplectic Structure of the Characteristic Flow}
+\label{subsec:lagrangian-submanifold}
 
 We close this step with a remark on the geometric structure that underlies the
 PMP--HJB equivalence, which is important for understanding why the bridge works
@@ -1849,10 +1783,11 @@ PMP--HJB bridge entirely.
 
 \subsubsection{Where We Stand}
 
+\begin{tldrbox}
 Section~\ref{sec:bridge} established the identity $p_x^\star(t) = \nabla_x \phi(t, z_x^\star(t))$
 rigorously. We know that PMP and HJB are the same object, that the costate is
 the gradient of the value function along optimal trajectories, and that this
-identity is preserved by the symplectic structure of the Hamiltonian flow. We
+identity is preserved. We
 also acknowledged that this identity is classical --- it has been known and used
 in the optimal control literature for decades.
 
@@ -1863,6 +1798,7 @@ why the identity alone is insufficient without an implicit solve, and how
 Newton's method fills the gap. This is the last purely mathematical step before
 Part IV, where the full neural network architecture and training procedure are
 developed.
+\end{tldrbox}
 
 \medskip\hrule\medskip
 
@@ -1906,7 +1842,7 @@ optimality condition becomes:
 
 \begin{equation}
     \nabla_u \mathcal{H}(t, z_x, \nabla_x \phi_\theta(t, z_x), u^\star) = 0.
-    \label{eq:implicit_condition}\label{eq:implicit-stationarity}
+    \label{eq:implicit_condition}
 \end{equation}
 
 This is a nonlinear equation in $u^\star \in \mathbb{R}^m$ that must be solved
@@ -1932,6 +1868,7 @@ what the paper achieves.
 
 \subsubsection{The Implicit Function Theorem as the Key}
 
+\begin{mathrequirementsbox}
 The resolution is to treat \eqref{eq:implicit_condition} as a
 \textbf{fixed-point equation} and solve it iteratively. Define:
 
@@ -1939,7 +1876,7 @@ The resolution is to treat \eqref{eq:implicit_condition} as a
     F(u;\, t, z_x, \theta)
     := \nabla_u \mathcal{H}(t, z_x, \nabla_x \phi_\theta(t, z_x), u)
     = 0.
-    \label{eq:fixed_point}\label{eq:implicit-F}
+    \label{eq:fixed_point}
 \end{equation}
 
 This is a system of $m$ equations in $m$ unknowns $u \in \mathbb{R}^m$,
@@ -1951,7 +1888,7 @@ $\partial F / \partial u$ is invertible at the solution:
 \begin{equation}
     \frac{\partial F}{\partial u}\bigg|_{u^\star}
     = \nabla^2_{uu} \mathcal{H}(t, z_x, \nabla_x\phi_\theta, u^\star).
-    \label{eq:IFT_condition}\label{eq:ift-jacobian}
+    \label{eq:IFT_condition}
 \end{equation}
 
 This Jacobian is invertible if and only if $\nabla^2_{uu}\mathcal{H} \prec 0$
@@ -1982,7 +1919,7 @@ implicitly:
     \frac{\partial u^\star}{\partial \theta}
     = -\left[\nabla^2_{uu}\mathcal{H}\right]^{-1}
     \nabla_{u,\theta}^2 \mathcal{H}
-    \label{eq:IFT_derivative}\label{eq:du-dtheta}
+    \label{eq:IFT_derivative}
 \end{equation}
 
 where $\nabla^2_{u,\theta}\mathcal{H} = \partial^2 \mathcal{H} /
@@ -1992,11 +1929,13 @@ This is the exact gradient of $u^\star$ with respect to $\theta$. Computing it
 requires solving one linear system involving $\nabla^2_{uu}\mathcal{H}$ per
 parameter --- which is expensive and is precisely what
 \textbf{Jacobian-Free Backpropagation} avoids. We return to this in Section~\ref{sec:jfb}.
+\end{mathrequirementsbox}
 
 \medskip\hrule\medskip
 
 \subsubsection{Newton's Method as the Inner Solve}
 
+\begin{compnumissuesbox}
 Given the guarantee from the IFT that $u^\star$ exists and is unique under
 strict concavity, we solve \eqref{eq:fixed_point} using Newton's method. Starting
 from an initial guess $u^{(0)}$ (e.g., the solution from the previous time step,
@@ -2007,7 +1946,7 @@ or zero), iterate:
     - \left[\nabla^2_{uu}\mathcal{H}(t, z_x, \nabla_x\phi_\theta, u^{(k)})
     \right]^{-1}
     \nabla_u \mathcal{H}(t, z_x, \nabla_x\phi_\theta, u^{(k)})
-    \label{eq:newton}\label{eq:newton-update}
+    \label{eq:newton}
 \end{equation}
 
 until $\|\nabla_u \mathcal{H}\| < \varepsilon_{\text{tol}}$ for some tolerance
@@ -2039,16 +1978,22 @@ by differentiating the network with respect to its input $x$. This is a standard
 autodiff operation. Crucially, the Newton iteration itself is \textit{not}
 differentiated through during training --- this is the stop-gradient operation
 that defines JFB and is justified in Section~\ref{sec:jfb}.
+\end{compnumissuesbox}
 
 \medskip\hrule\medskip
 
 \subsubsection{The Complete Control Evaluation Pipeline}
 
+\begin{tldrbox}
 We can now state the complete procedure for evaluating $u^\star(t, z_x;\theta)$
 at a single point during trajectory generation, combining the PMP--HJB bridge
 with the implicit solve:
 
+\medskip
+
 \begin{enumerate}
+    \setlength{\itemsep}{0.6em}
+
     \item \textbf{Forward pass:} evaluate $\phi_\theta(t, z_x)$ via the neural
           network. Cost: one forward pass, $O(\text{parameters})$.
 
@@ -2068,6 +2013,8 @@ with the implicit solve:
           $\dot{z}_x = f(t, z_x, u^\star)$.
 \end{enumerate}
 
+\medskip
+
 This pipeline replaces the single closed-form evaluation $u^\star =
 g(t, z_x, \nabla_x\phi_\theta)$ of the explicit case with a short iterative
 loop, at a cost that is $O(K \cdot m^3)$ per control evaluation (dominated by
@@ -2075,11 +2022,13 @@ the $m \times m$ linear solve in each Newton step). For the physical problems
 the paper considers --- space shuttle ($m = 1$), bicycle ($m = 2$) --- this cost
 is negligible. For larger $m$, quasi-Newton approximations keep the cost
 manageable.
+\end{tldrbox}
 
 \medskip\hrule\medskip
 
 \subsubsection{What Remains: The Training Problem}
 
+\begin{tldrbox}
 The pipeline above describes how to \textit{evaluate} $u^\star$ given a fixed
 network $\phi_\theta$. The remaining question is how to \textit{train}
 $\phi_\theta$ --- how to choose $\theta$ so that $\phi_\theta \approx \phi$,
@@ -2112,6 +2061,7 @@ and the HJB residual loss. Section~\ref{sec:training-temporal-coupling} defines 
 temporal coupling explicit. Sections~\ref{sec:full-gradient} and~\ref{sec:jfb-descent} develop the full gradient expression
 and identify the expensive term. Section~\ref{sec:jfb} introduces JFB, proves it produces
 descent directions, and completes the paper's contribution.
+\end{tldrbox}
 
 \pagebreak
 
@@ -2210,7 +2160,7 @@ must learn.
 
 To train $\phi_\theta$, we need a loss function that is minimized when
 $\phi_\theta = \phi$. The natural choice is the \textbf{HJB residual}: the
-pointwise violation of the HJB equation \eqref{eq:hjb_H}. Define the residual
+pointwise violation of the HJB equation \eqref{eq:hjb-hamiltonian-form}. Define the residual
 at a point $(t,x)$ as:
 
 \begin{equation}
@@ -2283,7 +2233,7 @@ costate, which \textit{requires} the value function parameterization.
 conditions simultaneously. A policy $u_\theta(t,x)$ does too in principle, but
 without the HJB constraint there is no guarantee that $u_\theta$ is consistent
 across different initial conditions in the way that $\nabla_x\phi_\theta$
-automatically is (by the Lagrangian submanifold structure of Section~\ref{sec:bridge}).
+automatically is (by the Lagrangian submanifold structure of Section~\ref{subsec:lagrangian-submanifold}).
 
 These three reasons together explain why the paper's architecture is
 $\phi_\theta$ rather than $u_\theta$, and why this choice is not merely
@@ -2536,9 +2486,6 @@ the true gradient direction to guarantee convergence, even though it ignores
 how the training distribution changes with $\theta$.
 
 
-The next two subsections are directly pastable into Overleaf:
-
-```latex
 \subsection{The Full Gradient Expression and the Expensive Term}
 \label{sec:full-gradient}
 
@@ -2664,6 +2611,7 @@ the descent-direction theorem in Section~\ref{sec:jfb-descent}.
 
 \subsubsection{Setup and Statement}
 
+\begin{mathrequirementsbox}
 We now state and prove the paper's central theoretical result: that the JFB
 \label{thm:jfb-descent}
 gradient $\widetilde{\nabla}_\theta\mathcal{L}$ --- Term I of
@@ -2723,11 +2671,13 @@ E(\theta)\rangle| \leq \|\widetilde{\nabla}_\theta\mathcal{L}\|\,
 
 The question is therefore: when is $\|E(\theta)\| 
 \|\widetilde{\nabla}_\theta\mathcal{L}\|$?
+\end{mathrequirementsbox}
 
 \medskip\hrule\medskip
 
 \subsubsection{Bounding the Error Term}
 
+\begin{mathrequirementsbox}
 From \eqref{eq:full_gradient} and \eqref{eq:traj_jacobian}, Term II satisfies:
 
 \begin{equation}
@@ -2771,11 +2721,13 @@ fine enough discretization. Substituting \eqref{eq:E_bound} into
 \end{equation}
 
 for $C(\Delta t, \theta) < 1$, which holds for $\Delta t$ small enough.
+\end{mathrequirementsbox}
 
 \medskip\hrule\medskip
 
 \subsubsection{Implications for Training}
 
+\begin{mathrequirementsbox}
 The descent direction result has three concrete implications for the training
 procedure.
 
@@ -2799,6 +2751,7 @@ autodiff through the network at fixed trajectory points). For $m \geq 2$
 and large $P$, this is a factor of $m$ to $m^2$ reduction, which in
 practice means JFB is feasible on a single GPU where exact backpropagation
 is not.
+\end{mathrequirementsbox}
 
 \medskip\hrule\medskip
 
@@ -2822,9 +2775,7 @@ implicit network setting. The bound \eqref{eq:E_bound} is therefore a
 genuine contribution of the paper, providing the first theoretical guarantee
 for JFB applied to trajectory optimization with implicit Hamiltonians.
 
-The following subsection and the concluding synthesis are directly pastable into Overleaf:
 
-```latex
 \subsection{Jacobian-Free Backpropagation --- The Complete Algorithm}
 \label{sec:jfb}
 
@@ -2894,77 +2845,41 @@ with hard terminal enforcement \eqref{eq:hard_terminal}. Let
 $\varepsilon_{\text{Newton}}$ be the Newton convergence tolerance and $K$
 the maximum number of Newton iterations.
 
-\medskip
+\begin{algorithm}[t]
+\caption{End-to-end training with implicit Hamiltonians and Jacobian-Free Backpropagation (JFB)}
+\begin{algorithmic}[1]
+\Require Dynamics $f$, running cost $L$, terminal cost $G$, control set $U$, initial-condition distribution $\rho$, learning rate $\eta$, batch size $B$, time points $\{t_j\}_{j=0}^M$, Newton tolerance $\varepsilon_{\text{Newton}}$, max Newton iterations $K$.
+\State Initialize $\theta^{(0)}$ randomly.
+\Repeat
+    \State Sample initial conditions $\{x_i\}_{i=1}^B \sim \rho$.
 
-\noindent\textbf{Algorithm: End-to-End Training with Implicit Hamiltonians
-and JFB}
+    \Statex \textbf{Generate trajectories} (forward pass; no gradient tracking through dynamics):
+    \For{$i = 1$ to $B$}
+        \State Integrate forward $\dot{z}_{x_i} = f\bigl(t, z_{x_i}, u^\star(t, z_{x_i};\theta^{(k)})\bigr)$ with $z_{x_i}(0)=x_i$.
+        \State At each integration step, evaluate $u^\star$ via:
+        \Statex \hspace{1.5em} $p_x \leftarrow \nabla_x\phi_{\theta^{(k)}}(t, z_{x_i})$ (autodiff).
+        \Statex \hspace{1.5em} Run Newton iterations \eqref{eq:newton} until $\|\nabla_u\mathcal{H}\| < \varepsilon_{\text{Newton}}$ (or $K$ steps).
+        \Statex \hspace{1.5em} Return $u^\star$; apply \texttt{stop\_grad} to the Newton output.
+        \State Record stopped trajectory points $\{\bar{z}_{x_i}(t_j)\}_{j=0}^M$ (\texttt{stop\_grad}).
+    \EndFor
 
-\medskip
+    \Statex \textbf{Evaluate HJB residuals} at stopped trajectory points:
+    \For{$i = 1$ to $B$}
+        \For{$j = 0$ to $M$}
+            \State Compute $u^\star\bigl(t_j, \bar{z}_{x_i}(t_j);\theta^{(k)}\bigr)$ via Newton (with \texttt{stop\_grad}).
+            \State Compute $\mathcal{R}\bigl(t_j, \bar{z}_{x_i}(t_j);\theta^{(k)}\bigr)$ via \eqref{eq:hjb_residual}.
+        \EndFor
+    \EndFor
 
-\noindent\textbf{Input:} Dynamics $f$, running cost $L$, terminal cost $G$,
-control set $U$, initial condition distribution $\rho$, learning rate $\eta$,
-batch size $B$, time points $\{t_j\}_{j=0}^M$.
-
-\noindent\textbf{Initialize:} $\theta^{(0)}$ randomly.
-
-\noindent\textbf{Repeat until convergence:}
-
-\begin{enumerate}
-    \item \textbf{Sample} initial conditions $\{x_i\}_{i=1}^B \sim \rho$.
-
-    \item \textbf{Generate trajectories} (forward pass, no gradient
-          tracking through dynamics):
-          \begin{enumerate}
-              \item For each $x_i$, integrate forward:
-                    $\dot{z}_{x_i} = f(t, z_{x_i}, u^\star(t,
-                    z_{x_i};\theta^{(k)}))$, $z_{x_i}(0) = x_i$.
-              \item At each integration step, evaluate $u^\star$ via:
-                    \begin{enumerate}
-                        \item Compute $p_x \leftarrow
-                              \nabla_x\phi_{\theta^{(k)}}(t, z_{x_i})$
-                              by autodiff.
-                        \item Run Newton iterations \eqref{eq:newton}
-                              until $\|\nabla_u\mathcal{H}\| 
-                              \varepsilon_{\text{Newton}}$.
-                        \item Return $u^\star$; \texttt{stop\_grad} on
-                              the Newton output.
-                    \end{enumerate}
-              \item Record trajectory points
-                    $\{\bar{z}_{x_i}(t_j)\}_{j=0}^M$
-                    with \texttt{stop\_grad} applied.
-          \end{enumerate}
-
-    \item \textbf{Evaluate HJB residuals} at stopped trajectory points:
-          \begin{enumerate}
-              \item For each $(i,j)$, compute $u^\star(t_j,
-                    \bar{z}_{x_i}(t_j);\theta^{(k)})$ via Newton
-                    (with \texttt{stop\_grad}).
-              \item Compute $\mathcal{R}(t_j, \bar{z}_{x_i}(t_j);
-                    \theta^{(k)})$ via \eqref{eq:hjb_residual}.
-          \end{enumerate}
-
-    \item \textbf{Compute JFB loss}
-          $\widetilde{\mathcal{L}}(\theta^{(k)})$ via
-          \eqref{eq:jfb_loss}.
-
-    \item \textbf{Backpropagate} through $\phi_\theta$ only (autodiff
-          through channel 1, channel 2 blocked by \texttt{stop\_grad}):
-          \begin{equation}
-              \widetilde{\nabla}_\theta\mathcal{L}
-              = \nabla_\theta\widetilde{\mathcal{L}}(\theta^{(k)}).
-          \end{equation}
-
-    \item \textbf{Update parameters:}
-          \begin{equation}
-              \theta^{(k+1)}
-              = \theta^{(k)}
-              - \eta\,\widetilde{\nabla}_\theta\mathcal{L}.
-          \end{equation}
-\end{enumerate}
-
-\noindent\textbf{Output:} $\phi_{\theta^\star}$, the trained value function.
-The feedback law is $u^\star(t,x) = \arg\sup_{u \in U}\mathcal{H}(t, x,
-\nabla_x\phi_{\theta^\star}(t,x), u)$, evaluated via Newton at deployment.
+    \State Compute JFB loss $\widetilde{\mathcal{L}}(\theta^{(k)})$ via \eqref{eq:jfb_loss}.
+    \State Backpropagate through $\phi_\theta$ only (channel 1; channel 2 blocked by \texttt{stop\_grad}) to obtain
+    \Statex \hspace{1.5em} $\widetilde{\nabla}_\theta\mathcal{L} = \nabla_\theta\widetilde{\mathcal{L}}(\theta^{(k)})$.
+    \State Update parameters: $\theta^{(k+1)} = \theta^{(k)} - \eta\,\widetilde{\nabla}_\theta\mathcal{L}$.
+\Until{convergence}
+\State \textbf{Output:} $\phi_{\theta^\star}$, the trained value function.
+\State Feedback law at deployment: $u^\star(t,x) = \arg\sup_{u \in U}\mathcal{H}(t, x, \nabla_x\phi_{\theta^\star}(t,x), u)$, evaluated via Newton.
+\end{algorithmic}
+\end{algorithm}
 
 \medskip\hrule\medskip
 

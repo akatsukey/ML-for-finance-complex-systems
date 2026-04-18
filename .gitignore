@@ -1,0 +1,6 @@
+# Python bytecode caches
+jfb-for-implicit-oc/__pycache__/
+jfb-for-implicit-oc/**/__pycache__/
+
+# Training artifacts (model checkpoints, histories, trajectory plots, logs)
+jfb-for-implicit-oc/results_MultiBicycleOC/

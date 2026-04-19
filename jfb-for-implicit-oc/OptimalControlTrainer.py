@@ -280,12 +280,7 @@ class OptimalControlTrainer:
             if plot_frequency and epoch % plot_frequency == 0:
                 z_traj = self.oc_problem.generate_trajectory(self.policy, z0,
                                                              self.oc_problem.nt, return_full_trajectory=True)
-                traj_plot_dir = os.path.join(save_dir, 'traj_plots')
-                os.makedirs(traj_plot_dir, exist_ok=True)
-                traj_plot_path = os.path.join(traj_plot_dir, f'traj_{save_model_name}_epoch_{epoch:04d}.png')
-                self.oc_problem.plot_position_trajectories(z_traj.detach(), save_path=traj_plot_path)
-                if verbose:
-                    print(f"    -> Trajectory plot saved to {traj_plot_path}")
+                self.oc_problem.plot_position_trajectories(z_traj.detach(), self.policy)
 
             # === Save CSV after each epoch ===
             pd.DataFrame(self.history).to_csv(history_path, index=False)
@@ -299,6 +294,8 @@ class OptimalControlTrainer:
         plt.savefig(os.path.join(save_dir, f'loss_curve_{save_model_name}.png')); plt.close()
 
 if __name__ == '__main__':
+    from Quadcopter import QuadcopterOC
+    from CVXPolicy import CVXPolicy_MC, CVXPolicy_Quadcopter
 
     # --- Shared Configuration ---
     config_OC = {'batch_size': 10, 'nt': 2, 't_final': 10.0, }

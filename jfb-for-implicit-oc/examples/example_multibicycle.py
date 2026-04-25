@@ -4,6 +4,7 @@ from MultiBicycle import MultiBicycleOC
 from ImplicitNets import ImplicitNetOC, ImplicitNetOC_MB, Phi
 from OptimalControlTrainer import OptimalControlTrainer, LRScheduler
 from CVXPolicy import CVXPolicy_MultiBicycle
+from core.paths import results_dir
 import time
 import sys
 import os
@@ -24,7 +25,7 @@ class Logger(object):
         self.log.flush()
 
 
-sys.stdout = Logger("results_MultiBicycleOC/mb_run.log")
+sys.stdout = Logger(os.path.join(results_dir("MultiBicycleOC", "training"), "mb_run.log"))
 def run_mb_jfb(config_oc, config_train, N, full_AD_mode=False, device='cpu', plot_frequency=None, load_prev_model=False, model_path=""):
     """
     Solves Quadcopter optimal control problem with INN + JFB
@@ -105,7 +106,10 @@ def run_mb_direct_transcription(N,config_oc, device):
 
     # Plot trajectory
     z_traj = mb_oc.generate_trajectory(u_true, z0, config_oc['nt'], return_full_trajectory=True)
-    save_path = f"results_MultiBicycleOC/mb_traj_{time.ctime().replace(' ','_').replace(':','_')}_direct_transcription.png"
+    save_path = os.path.join(
+        results_dir("MultiBicycleOC", "rollouts"),
+        f"mb_traj_{time.ctime().replace(' ','_').replace(':','_')}_direct_transcription.png",
+    )
     mb_oc.plot_position_trajectories(z_traj.detach(), u_true, save_path=save_path)
     
 def main():

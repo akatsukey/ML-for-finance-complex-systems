@@ -5,6 +5,7 @@ from Quadcopter import QuadcopterOC, MultiQuadcopterOC
 from ImplicitNets import ImplicitNetOC, Phi
 from OptimalControlTrainer import OptimalControlTrainer
 from CVXPolicy import CVXPolicy_MultiQuadcopter
+from core.paths import results_dir
 import time
 import sys, os
 #torch.set_default_dtype(torch.float64)
@@ -23,7 +24,7 @@ class Logger(object):
         self.terminal.flush()
         self.log.flush()
 
-sys.stdout = Logger("results_MultiQuadcopterOC/multi_quadcopter_run.log")
+sys.stdout = Logger(os.path.join(results_dir("MultiQuadcopterOC", "training"), "multi_quadcopter_run.log"))
 def run_quadcopter_jfb(config_oc, config_train, full_AD_mode=False, device='cpu', plot_frequency=100):
     """
     Solves Quadcopter optimal control problem with INN + JFB

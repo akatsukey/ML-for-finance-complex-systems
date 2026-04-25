@@ -1,6 +1,28 @@
-# Python bytecode caches
-jfb-for-implicit-oc/__pycache__/
-jfb-for-implicit-oc/**/__pycache__/
+# macOS metadata
+.DS_Store
 
-# Training artifacts (model checkpoints, histories, trajectory plots, logs)
-jfb-for-implicit-oc/results_MultiBicycleOC/
+# Python bytecode caches
+__pycache__/
+**/__pycache__/
+.pytest_cache/
+
+# All training/inference/reference/benchmark artifacts go here.
+# Layout: jfb-for-implicit-oc/results/<ProblemClassName>/{training,rollouts,reference,benchmark}/
+jfb-for-implicit-oc/results/
+
+# Defensive: catch any stray legacy results_* trees that might still get
+# created by an out-of-date branch before it picks up core/paths.py.
+**/results_*/
+
+# Model checkpoints saved outside the results/ tree (defensive).
+*.pth
+*.ckpt
+
+# LaTeX build artifacts
+latex/*.aux
+latex/*.fdb_latexmk
+latex/*.fls
+latex/*.log
+latex/*.out
+latex/*.synctex.gz
+latex/*.toc

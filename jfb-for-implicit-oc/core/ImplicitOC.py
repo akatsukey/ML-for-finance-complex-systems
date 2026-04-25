@@ -4,6 +4,8 @@ from abc import ABC, abstractmethod
 from utils import GradientTester
 import matplotlib.pyplot as plt
 
+TimeLike = float | torch.Tensor
+
 class ImplicitOC(ABC):
     """
     A general class for Implicit Optimal Control problems.
@@ -49,7 +51,9 @@ class ImplicitOC(ABC):
         self.track_all_fp_iters = track_all_fp_iters
 
     @abstractmethod
-    def compute_lagrangian(self, t, z, u):
+    def compute_lagrangian(
+        self, t: TimeLike, z: torch.Tensor, u: torch.Tensor
+    ) -> torch.Tensor:
         """
         Compute the Lagrangian (running cost).
         
@@ -62,7 +66,9 @@ class ImplicitOC(ABC):
         pass
     
     @abstractmethod
-    def compute_grad_lagrangian(self, t, z, u):
+    def compute_grad_lagrangian(
+        self, t: TimeLike, z: torch.Tensor, u: torch.Tensor
+    ) -> torch.Tensor:
         """
         Compute the gradient of the Lagrangian with respect to control.
         
@@ -75,7 +81,7 @@ class ImplicitOC(ABC):
         pass
     
     @abstractmethod
-    def compute_G(self, z):
+    def compute_G(self, z: torch.Tensor) -> torch.Tensor:
         """
         Compute the terminal cost.
         
@@ -88,7 +94,9 @@ class ImplicitOC(ABC):
         pass
     
     @abstractmethod
-    def compute_f(self, t, z, u):
+    def compute_f(
+        self, t: TimeLike, z: torch.Tensor, u: torch.Tensor
+    ) -> torch.Tensor:
         """
         Compute the system dynamics.
         
@@ -103,7 +111,9 @@ class ImplicitOC(ABC):
         pass
     
     @abstractmethod
-    def compute_grad_f_u(self, t, z, u):
+    def compute_grad_f_u(
+        self, t: TimeLike, z: torch.Tensor, u: torch.Tensor
+    ) -> torch.Tensor:
         """
         Compute the gradient of the dynamics with respect to control.
         
@@ -118,7 +128,9 @@ class ImplicitOC(ABC):
         pass
     
     @abstractmethod
-    def compute_grad_f_z(self, t, z, u):
+    def compute_grad_f_z(
+        self, t: TimeLike, z: torch.Tensor, u: torch.Tensor
+    ) -> torch.Tensor:
         """
         Compute the gradient of the dynamics with respect to state.
         
@@ -133,22 +145,22 @@ class ImplicitOC(ABC):
         pass
     
     @abstractmethod
-    def compute_grad_G_z(self, t, z, u):
+    def compute_grad_G_z(self, z: torch.Tensor) -> torch.Tensor:
         """
-        Compute the gradient of the dynamics with respect to state.
-        
+        Compute the gradient of the terminal cost G with respect to state.
+
         Args:
-            t (torch.Tensor or float): Current time
             z (torch.Tensor): State vector of shape (batch_size, state_dim)
-            u (torch.Tensor): Control input of shape (batch_size, control_dim)
-            
+
         Returns:
-            torch.Tensor: Gradient of G w.r.t. z of shape (batch_size, state_dim, state_dim)
+            torch.Tensor: Gradient of G w.r.t. z of shape (batch_size, state_dim)
         """
         pass
 
     
-    def compute_general_H(self, t, z, u, p):
+    def compute_general_H(
+        self, t: TimeLike, z: torch.Tensor, u: torch.Tensor, p: torch.Tensor
+    ) -> torch.Tensor:
         """
         Compute the generalized Hamiltonian H = L + p^T f.
         
@@ -174,7 +186,9 @@ class ImplicitOC(ABC):
         
         return H_val
     
-    def compute_grad_H_u(self, t, z, u, p):
+    def compute_grad_H_u(
+        self, t: TimeLike, z: torch.Tensor, u: torch.Tensor, p: torch.Tensor
+    ) -> torch.Tensor:
         """
         Compute the gradient of the Hamiltonian with respect to control.
         
@@ -205,7 +219,14 @@ class ImplicitOC(ABC):
         
         return grad_H_u_val
 
-    def compute_grad_H_u_(self, t, z, u, p, grad_f_u_term):
+    def compute_grad_H_u_(
+        self,
+        t: TimeLike,
+        z: torch.Tensor,
+        u: torch.Tensor,
+        p: torch.Tensor,
+        grad_f_u_term: torch.Tensor,
+    ) -> torch.Tensor:
         """
         Compute the non-batch gradient of the Hamiltonian with respect to control.
 
@@ -233,7 +254,9 @@ class ImplicitOC(ABC):
 
         return grad_H_u_val
     
-    def compute_grad_H_z(self, t, z, u, p):
+    def compute_grad_H_z(
+        self, t: TimeLike, z: torch.Tensor, u: torch.Tensor, p: torch.Tensor
+    ) -> torch.Tensor:
         """
         Compute the gradient of the Hamiltonian with respect to state.
         
@@ -258,7 +281,9 @@ class ImplicitOC(ABC):
         
         return output
     
-    def solve_adjoint_eq(self, z, u):
+    def solve_adjoint_eq(
+        self, z: torch.Tensor, u: torch.Tensor | torch.nn.Module
+    ) -> torch.Tensor:
         """
         Compute the adjoint equation for the Hamiltonian.
         

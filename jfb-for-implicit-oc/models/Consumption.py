@@ -1,5 +1,5 @@
 # from ImplicitOC import ImplicitOC
-from ImplicitOC import ImplicitOC
+from ImplicitOC import ImplicitOC, TimeLike
 import torch
 from utils import GradientTester
 
@@ -49,7 +49,9 @@ class ConsumptionSavingsOC(ImplicitOC):
         self.gamma = gamma
         self.epsilon = epsilon
 
-    def compute_lagrangian(self, t, z, u):
+    def compute_lagrangian(
+        self, t: TimeLike, z: torch.Tensor, u: torch.Tensor
+    ) -> torch.Tensor:
         """
         Compute the running cost (Lagrangian).
 
@@ -76,7 +78,9 @@ class ConsumptionSavingsOC(ImplicitOC):
         lag = torch.exp(-self.delta * tau) * util
         return lag[0] if squeeze else lag
 
-    def compute_grad_lagrangian(self, t, z, u):
+    def compute_grad_lagrangian(
+        self, t: TimeLike, z: torch.Tensor, u: torch.Tensor
+    ) -> torch.Tensor:
         """
         Compute the gradient of the Lagrangian with respect to control.
         Args:
@@ -102,7 +106,9 @@ class ConsumptionSavingsOC(ImplicitOC):
         grad = exp_term * mask * diff.pow(-self.gamma)
         return grad[0] if squeeze else grad
 
-    def compute_f(self, t, z, u):
+    def compute_f(
+        self, t: TimeLike, z: torch.Tensor, u: torch.Tensor
+    ) -> torch.Tensor:
         """
         Compute the state dynamics.
         """
@@ -122,7 +128,9 @@ class ConsumptionSavingsOC(ImplicitOC):
         result = torch.cat((dx, dh), dim=1)
         return result[0] if squeeze else result
 
-    def compute_grad_f_u(self, t, z, u):
+    def compute_grad_f_u(
+        self, t: TimeLike, z: torch.Tensor, u: torch.Tensor
+    ) -> torch.Tensor:
         """
         Compute the gradient of the system dynamics f with respect to the state u.
         """
@@ -141,7 +149,9 @@ class ConsumptionSavingsOC(ImplicitOC):
             grad[:, i, 1:] = self.A[:, i].unsqueeze(0) * u_p[:, i].unsqueeze(1)
         return grad[0] if squeeze else grad
 
-    def compute_grad_f_z(self, t, z, u):
+    def compute_grad_f_z(
+        self, t: TimeLike, z: torch.Tensor, u: torch.Tensor
+    ) -> torch.Tensor:
         
         if z.dim() == 1:
             z = z.unsqueeze(0)
@@ -163,7 +173,7 @@ class ConsumptionSavingsOC(ImplicitOC):
         grad[:, 1:1+self.m, 1:1+self.m] -= coeff
         return grad[0] if squeeze else grad
 
-    def compute_G(self, z):
+    def compute_G(self, z: torch.Tensor) -> torch.Tensor:
         """
         Compute the terminal cost (without discounting).
 
@@ -183,7 +193,7 @@ class ConsumptionSavingsOC(ImplicitOC):
         G = self.epsilon * xT.clamp(min=1e-6).pow(1 - self.gamma) / (1 - self.gamma)
         return G[0] if squeeze else G
 
-    def compute_grad_G_z(self, z):
+    def compute_grad_G_z(self, z: torch.Tensor) -> torch.Tensor:
         if z.dim() == 1:
             z = z.unsqueeze(0)
             squeeze = True

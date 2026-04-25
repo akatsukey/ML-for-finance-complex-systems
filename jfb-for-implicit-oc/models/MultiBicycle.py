@@ -2,7 +2,7 @@ import os
 os.environ['KMP_DUPLICATE_LIB_OK']='True' # Workaround for OMP: Error #15
 from ImplicitNets import ImplicitNetOC
 from ImplicitNets import Phi
-from ImplicitOC import ImplicitOC
+from ImplicitOC import ImplicitOC, TimeLike
 import torch
 import matplotlib.pyplot as plt
 import time
@@ -111,7 +111,9 @@ class MultiBicycleOC(ImplicitOC):
         return interaction_cost / (self.num_agents*2.0), (grad_z_reshaped/ (self.num_agents*2.0)).view(batch_size, self.state_dim)
 
     # --- MODIFIED METHOD ---
-    def compute_lagrangian(self, t, z, u):
+    def compute_lagrangian(
+        self, t: TimeLike, z: torch.Tensor, u: torch.Tensor
+    ) -> torch.Tensor:
         """
         Calculate Lagrangian (running cost) of multi bicycle OC problem
 
@@ -147,7 +149,9 @@ class MultiBicycleOC(ImplicitOC):
         return (self.alpha_interaction * grad_interaction_z) + dGt_dz
 
     # --- NEW METHOD (Overrides base (implicitOC) class) ---
-    def compute_grad_H_z(self, t, z, u, p):
+    def compute_grad_H_z(
+        self, t: TimeLike, z: torch.Tensor, u: torch.Tensor, p: torch.Tensor
+    ) -> torch.Tensor:
         """
         Compute the gradient of the Hamiltonian H = L(z,u) + p^T f(z,u) w.r.t. state z.
         This override is necessary because the Lagrangian L now depends on state z.
@@ -157,7 +161,9 @@ class MultiBicycleOC(ImplicitOC):
         return grad_L_z + grad_H_z_from_f
 
     
-    def compute_grad_lagrangian(self, t, z, u):
+    def compute_grad_lagrangian(
+        self, t: TimeLike, z: torch.Tensor, u: torch.Tensor
+    ) -> torch.Tensor:
         """
         Calculate gradient with respect to u of Lagrangian (running cost) 
 
@@ -186,7 +192,7 @@ class MultiBicycleOC(ImplicitOC):
         """
         return u
     
-    def compute_G(self, z): 
+    def compute_G(self, z: torch.Tensor) -> torch.Tensor:
         """
         Calculate terminal cost of multi bicycle OC problem
 
@@ -221,7 +227,7 @@ class MultiBicycleOC(ImplicitOC):
             #G = torch.sum(G_huber, dim=1)
             return G
     
-    def compute_grad_G_z(self, z):
+    def compute_grad_G_z(self, z: torch.Tensor) -> torch.Tensor:
         """
         Calculate the gradient of terminal cost G with respect to z
 
@@ -243,7 +249,9 @@ class MultiBicycleOC(ImplicitOC):
             grad_G_z = diff
             return grad_G_z
 
-    def compute_f(self, t, z, u):
+    def compute_f(
+        self, t: TimeLike, z: torch.Tensor, u: torch.Tensor
+    ) -> torch.Tensor:
         """
         Computes the time derivative of the state vector z 
         for the multi bicycle OC problem
@@ -287,7 +295,9 @@ class MultiBicycleOC(ImplicitOC):
         grad_f_u_[1:self.control_dim:2,3:self.state_dim:4] = torch.eye(self.num_agents, self.num_agents, device=self.device)
         return grad_f_u_
     
-    def compute_grad_f_u(self, t, z, u):
+    def compute_grad_f_u(
+        self, t: TimeLike, z: torch.Tensor, u: torch.Tensor
+    ) -> torch.Tensor:
         """
         Computes the gradient of the dynamics f with respect to the control u.
 
@@ -327,7 +337,9 @@ class MultiBicycleOC(ImplicitOC):
 
         return grad_f_z_
     
-    def compute_grad_f_z(self, t, z, u):
+    def compute_grad_f_z(
+        self, t: TimeLike, z: torch.Tensor, u: torch.Tensor
+    ) -> torch.Tensor:
         """
         Computes the gradient of the dynamics f with respect to the state vector z
 

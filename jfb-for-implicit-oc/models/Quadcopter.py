@@ -1,6 +1,6 @@
 from ImplicitNets import ImplicitNetOC
 from ImplicitNets import Phi
-from ImplicitOC import ImplicitOC
+from ImplicitOC import ImplicitOC, TimeLike
 import torch
 import matplotlib.pyplot as plt
 import time
@@ -47,7 +47,9 @@ class QuadcopterOC(ImplicitOC):
         
         return torch.cat([y1_dot, y2_dot, y3_dot, y4_dot, y5_dot, y6_dot, y7_dot, y8_dot, y9_dot, y10_dot, y11_dot, y12_dot], dim=1)
 
-    def compute_f(self, t, z, u):
+    def compute_f(
+        self, t: TimeLike, z: torch.Tensor, u: torch.Tensor
+    ) -> torch.Tensor:
         return self._compute_f_single(t, z, u)
 
     def _compute_grad_f_z_single(self, t, z, u):
@@ -73,7 +75,9 @@ class QuadcopterOC(ImplicitOC):
         grad_f_z[:, 6:single_state_dim, 0:6] = torch.eye(6,6, device=self.device)
         return grad_f_z
 
-    def compute_grad_f_z(self, t, z, u):
+    def compute_grad_f_z(
+        self, t: TimeLike, z: torch.Tensor, u: torch.Tensor
+    ) -> torch.Tensor:
         return self._compute_grad_f_z_single(t, z, u)
 
     def generate_trajectory(self, u, z0, nt, return_full_trajectory=False):
@@ -116,7 +120,9 @@ class QuadcopterOC(ImplicitOC):
         grad_f_u[:, 3, 11] = 1.0
         return grad_f_u
 
-    def compute_grad_f_u(self, t, z, u):
+    def compute_grad_f_u(
+        self, t: TimeLike, z: torch.Tensor, u: torch.Tensor
+    ) -> torch.Tensor:
         return self._compute_grad_f_u_single(t, z, u)
 
     def compute_grad_f_u_(self, z, u, grad_f_u):
@@ -132,13 +138,17 @@ class QuadcopterOC(ImplicitOC):
         grad_f_u[3, 11] = 1.0
         return grad_f_u
 
-    def compute_lagrangian(self, t, z, u):
+    def compute_lagrangian(
+        self, t: TimeLike, z: torch.Tensor, u: torch.Tensor
+    ) -> torch.Tensor:
         # batch_size = u.shape[0]
         u = u.view(-1, self.control_dim) # Works for both single and multi
         loss = torch.exp(0.5 * torch.norm(u, dim=1)**2)
         return loss
 
-    def compute_grad_lagrangian(self, t, z, u):
+    def compute_grad_lagrangian(
+        self, t: TimeLike, z: torch.Tensor, u: torch.Tensor
+    ) -> torch.Tensor:
         u = u.view(-1, self.control_dim)
         grad_lagrangian_term = (torch.exp(0.5 * torch.norm(u, dim=1)**2)[:,None])*u
         return grad_lagrangian_term
@@ -158,7 +168,7 @@ class QuadcopterOC(ImplicitOC):
         grad_lagrangian_term = torch.exp(0.5 * torch.linalg.norm(u)**2)*u
         return grad_lagrangian_term
 
-    def compute_G(self, z): 
+    def compute_G(self, z: torch.Tensor) -> torch.Tensor:
         diff = None
         if self.pen_pos:
             diff = z[:,:3] - self.z_target[:,:3]
@@ -167,7 +177,7 @@ class QuadcopterOC(ImplicitOC):
         G = 0.5 * torch.norm(diff, dim=1)**2
         return G
     
-    def compute_grad_G_z(self, z):
+    def compute_grad_G_z(self, z: torch.Tensor) -> torch.Tensor:
         z = z.view(-1, self.state_dim)
         return z - self.z_target
 
@@ -319,7 +329,9 @@ class MultiQuadcopterOC(QuadcopterOC):
 
 
     # modified
-    def compute_lagrangian(self, t, z, u):
+    def compute_lagrangian(
+        self, t: TimeLike, z: torch.Tensor, u: torch.Tensor
+    ) -> torch.Tensor:
         # batch_size = u.shape[0]
         u = u.view(-1, self.control_dim) 
         loss = torch.exp(0.5 * (torch.norm(u, dim=1)**2/self.num_agents)) # working for AD and JFB 
@@ -327,7 +339,9 @@ class MultiQuadcopterOC(QuadcopterOC):
         interaction_cost, _ = self._compute_interaction_term(z)
         return loss + self.alpha_interaction * interaction_cost
 
-    def compute_grad_lagrangian(self, t, z, u):
+    def compute_grad_lagrangian(
+        self, t: TimeLike, z: torch.Tensor, u: torch.Tensor
+    ) -> torch.Tensor:
         u = u.view(-1, self.control_dim)
         grad_lagrangian_term = (torch.exp(0.5 * (torch.norm(u, dim=1)**2)/self.num_agents)[:,None])*u/self.num_agents
 
@@ -340,13 +354,15 @@ class MultiQuadcopterOC(QuadcopterOC):
         return self.alpha_interaction * grad_interaction_z
 
     # new (Overrides base (ImplicitOC) class) ---
-    def compute_grad_H_z(self, t, z, u, p):
+    def compute_grad_H_z(
+        self, t: TimeLike, z: torch.Tensor, u: torch.Tensor, p: torch.Tensor
+    ) -> torch.Tensor:
         grad_L_z = self.compute_grad_lagrangian_z(t, z, u)
         grad_H_z_from_f = super().compute_grad_H_z(t, z, u, p)
 
         return grad_L_z + grad_H_z_from_f
 
-    def compute_G(self, z): 
+    def compute_G(self, z: torch.Tensor) -> torch.Tensor:
         z = z.view(-1, self.state_dim)
         if self.pen_pos:
             batch_size = z.shape[0]
@@ -362,7 +378,7 @@ class MultiQuadcopterOC(QuadcopterOC):
             G = 0.5 * (torch.norm(diff, dim=1)**2)/(self.num_agents*2)
             return G
     
-    def compute_grad_G_z(self, z):
+    def compute_grad_G_z(self, z: torch.Tensor) -> torch.Tensor:
         z = z.view(-1, self.state_dim)
         if self.pen_pos:
             batch_size = z.shape[0]
@@ -374,7 +390,9 @@ class MultiQuadcopterOC(QuadcopterOC):
         else:   
             return (z - self.z_target)/(self.num_agents*2)
 
-    def compute_f(self, t, z, u):
+    def compute_f(
+        self, t: TimeLike, z: torch.Tensor, u: torch.Tensor
+    ) -> torch.Tensor:
         """ Vectorized dynamics computation. """
         batch_size = z.shape[0]
         
@@ -389,7 +407,9 @@ class MultiQuadcopterOC(QuadcopterOC):
         # Reshape back [batch * num quads, 12] -> [batch, num quads * 12]
         return dz_dt_reshaped.view(batch_size, self.state_dim)
 
-    def compute_grad_f_z(self, t, z, u):
+    def compute_grad_f_z(
+        self, t: TimeLike, z: torch.Tensor, u: torch.Tensor
+    ) -> torch.Tensor:
         """ Vectorized gradient computation for f w.r.t. z. """
         batch_size = z.shape[0]
         
@@ -416,7 +436,9 @@ class MultiQuadcopterOC(QuadcopterOC):
         
         return grad_f_z
 
-    def compute_grad_f_u(self, t, z, u):
+    def compute_grad_f_u(
+        self, t: TimeLike, z: torch.Tensor, u: torch.Tensor
+    ) -> torch.Tensor:
         """ Vectorized gradient computation for f w.r.t. u. """
         batch_size = z.shape[0]
         

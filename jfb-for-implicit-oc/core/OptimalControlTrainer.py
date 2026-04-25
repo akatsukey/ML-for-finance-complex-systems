@@ -1,21 +1,48 @@
 """
 Working Jacobian-based trainer that extends your existing ImplicitNetOC.
 This follows the exact pattern from your utils_JFB.py but adapted for optimal control.
+
+Artifact policy
+~~~~~~~~~~~~~~~
+Every training run is owned by a :class:`core.run_io.RunIO` instance, which
+decides the on-disk layout. The trainer never builds paths or filenames
+itself; it just reads them off ``self.run_io``. Each call to :meth:`train`
+produces, deterministically:
+
+-* ``best_policy_<stem>.pth``      -- best-loss checkpoint
+-* ``history_<stem>.csv``          -- full per-epoch metrics
+-* ``loss_curve_<stem>.png``       -- post-training loss curve
+-* ``training-plots/rollout_<stem>_NNNN.png`` -- mid-training rollouts
+-* ``policy_rollout_<stem>.png``   -- final rollout of the best policy
+-* ``trajectory_<stem>.pth``       -- saved tensor of that final rollout
+
+Plotting is delegated to ``benchmarking.BenchmarkPlotter`` for any model
+that exposes ``panels()`` and ``to_trajectory()``. Models that have not
+been migrated yet keep their bespoke ``plot_position_trajectories`` and
+hit the legacy fallback branch.
 """
+
+from __future__ import annotations
+
+import os
+import time
+import copy
 
 import torch
 import torch.nn as nn
-import time
-import os
 import pandas as pd
+import psutil
 from matplotlib import pyplot as plt
+
 from Quadcopter import QuadcopterOC
 from CVXPolicy import CVXPolicy_MC, CVXPolicy_Quadcopter
 from ImplicitNets import ImplicitNetOC
 ## for optimal consumption example, use --
 # from ImplicitNets import ImplicitNetOC_pos as ImplicitNetOC
-import psutil
-import copy
+from core.paths import results_dir
+from core.run_io import RunIO
+from benchmarking import BenchmarkPlotter
+
 
 class LRScheduler:
     """
@@ -67,12 +94,22 @@ class LRScheduler:
 
             for g in self.optimizer.param_groups:
                 g['lr'] = self.current_lr
-                
+
             self.num_no_decr = 0
 
 
 class OptimalControlTrainer:
-    def __init__(self, policy_net, oc_problem, optimizer, scheduler=None, ver=False, device='cpu'):
+    def __init__(
+        self,
+        policy_net,
+        oc_problem,
+        optimizer,
+        scheduler=None,
+        ver=False,
+        device='cpu',
+        tag: str = "JFB",
+        run_io: RunIO | None = None,
+    ):
         self.policy = policy_net
         self.oc_problem = oc_problem
         self.optimizer = optimizer
@@ -83,7 +120,12 @@ class OptimalControlTrainer:
         # Gradient clipping for direct control methods
         self.enable_grad_clip = False
         self.grad_clip_value = 1.0
-        # === CHANGE: Restored full history tracking ===
+
+        self.run_io = run_io or RunIO(
+            problem_cls_name=type(oc_problem).__name__,
+            tag=tag,
+        )
+
         self.history = {k: [] for k in [
             'epoch', 'loss', 'running_cost', 'terminal_cost', 
             'cHJB', 'cHJBfin', 'cadj', 'cadjfin',
@@ -105,7 +147,7 @@ class OptimalControlTrainer:
         self.policy.train()
         max_fp_itrs = 0.0
         max_fp_res_norm = 0.0
-        
+
         if self.mode == 'standard':
             convergence_stats = self.policy.get_convergence_stats()
             max_fp_itrs = convergence_stats['fp_depth']
@@ -177,8 +219,8 @@ class OptimalControlTrainer:
         self.optimizer.step()
         # === CHANGE: Return all cost components ===
         return {
-            'loss': total_cost.item(), 
-            'running_cost': run_cost.item(), 
+            'loss': total_cost.item(),
+            'running_cost': run_cost.item(),
             'terminal_cost': term_cost.item(),
             'cHJB': cHJB.item(),
             'cHJBfin': cHJBfin.item(),
@@ -210,27 +252,45 @@ class OptimalControlTrainer:
             return self.standard_step_verify(z0)
         else: # standard mode
             return self.standard_step(z0)
-    
-    def train(self, z0, num_epochs, verbose=True, plot_frequency=25, save_model_name='best_policy'):
-        oc_name = type(self.oc_problem).__name__
-        save_dir = f'results_{oc_name}/{self.mode}_mode'
-        if not os.path.exists(save_dir): os.makedirs(save_dir)
-        save_path = os.path.join(save_dir, f'{save_model_name}.pth')
-        history_path = os.path.join(save_dir, f'history_{save_model_name}.csv')
-        print(f"Starting training in '{self.mode}' mode for {num_epochs} epochs. Results in '{save_dir}'")
+
+    # ------------------------------------------------------------------
+    # Plotting dispatch
+    # ------------------------------------------------------------------
+    def _has_benchmark_plotter_api(self) -> bool:
+        return hasattr(self.oc_problem, "panels") and hasattr(self.oc_problem, "to_trajectory")
+
+    def _plot_rollout(self, z_traj: torch.Tensor, save_path: str) -> None:
+        """Dispatch a rollout figure to whichever plotting API the model exposes."""
+        if self._has_benchmark_plotter_api():
+            traj = self.oc_problem.to_trajectory(z_traj.detach(), self.policy)
+            BenchmarkPlotter(self.oc_problem.panels()).plot([traj], save_path=save_path)
+        else:
+            # Legacy path for models that have not yet been migrated
+            # (Quadcopter, MultiBicycle): their plot_position_trajectories
+            # accepts (z_traj, ..., save_path=...).
+            self.oc_problem.plot_position_trajectories(z_traj.detach(), save_path=save_path)
+
+    # ------------------------------------------------------------------
+    # Training
+    # ------------------------------------------------------------------
+    def train(self, z0, num_epochs, verbose=True, plot_frequency=25):
+        save_path = self.run_io.policy_path()
+        history_path = self.run_io.history_path()
+        print(f"Starting training in '{self.mode}' mode for {num_epochs} epochs.")
+        print(f"  run_id      : {self.run_io.run_id}")
+        print(f"  output root : {self.run_io.train_dir}")
         print("-" * 60)
         best_loss = float('inf')
 
         process = psutil.Process(os.getpid())
         for epoch in range(1, num_epochs + 1):
-            # GPU Memory usage (in MB)
             gpu_memory_MB = 0.0
             gpu_max_memory_MB = 0.0
             max_memory_MB = 0.0
             epoch_start_time = time.time()
             step_info = self.train_epoch(z0)
             self.scheduler.step(step_info['loss'])
-            
+
             memory_MB = process.memory_info().rss / 1024 / 1024
             if memory_MB > max_memory_MB:
                 max_memory_MB = memory_MB
@@ -241,12 +301,10 @@ class OptimalControlTrainer:
 
             grad_norm = sum(p.grad.norm().item()**2 for p in self.policy.parameters() if p.grad is not None)**0.5
 
-            work_units = self.oc_problem.batch_size*self.policy.tracked_iters
+            work_units = self.oc_problem.batch_size * self.policy.tracked_iters
             if (step_info['max_fp_itrs'] < self.policy.tracked_iters) or self.oc_problem.track_all_fp_iters:
-                work_units = self.oc_problem.batch_size*step_info['max_fp_itrs']
-            
+                work_units = self.oc_problem.batch_size * step_info['max_fp_itrs']
 
-            # This loop correctly populates the full history dict
             for key in self.history:
                 if key == 'memory_MB':
                     self.history[key].append(memory_MB)
@@ -264,73 +322,91 @@ class OptimalControlTrainer:
             # === CHANGE: Updated print statement to show HJB/ADJ costs and memory ===
             if verbose:
                 print(f"Epoch {epoch:03d} | Loss: {step_info['loss']:.3e} | L: {step_info['running_cost']:.3e} | G: {step_info['terminal_cost']:.3e} | "
-                        f"HJB: {step_info.get('cHJB', 0):.3e} | HJB fin: {step_info.get('cHJBfin',0):.3e} |Adj: {step_info.get('cadj', 0):.2e} | "
+                      f"HJB: {step_info.get('cHJB', 0):.3e} | HJB fin: {step_info.get('cHJBfin',0):.3e} |Adj: {step_info.get('cadj', 0):.2e} | "
                       f"Grad: {grad_norm:.2e} | Time: {time_per_epoch:.2f}s | "
                       f"CPU Mem: {memory_MB:.1f}MB | Max CPU: {max_memory_MB:.1f}MB | "
                       f"GPU Mem: {gpu_memory_MB:.1f}MB | Max GPU: {gpu_max_memory_MB:.1f}MB | lr: {step_info['lr']:.3e} | "
                       f"max_fp_itrs: {step_info['max_fp_itrs']} | res_norm: {step_info['max_fp_res_norm']:.3e} | max_grad_H: {step_info['max_grad_H']:.3e} | avg_grad_H: {step_info['avg_grad_H']:.3e} ")
 
-            prev_loss = step_info['loss']
-
             if step_info['loss'] < best_loss:
                 best_loss = step_info['loss']
                 torch.save(self.policy.state_dict(), save_path)
-                if verbose: print(f"    -> New best model saved to {save_path} with loss {best_loss:.4e}")
+                if verbose:
+                    print(f"    -> New best model saved to {save_path} with loss {best_loss:.4e}")
 
             if plot_frequency and epoch % plot_frequency == 0:
-                z_traj = self.oc_problem.generate_trajectory(self.policy, z0,
-                                                             self.oc_problem.nt, return_full_trajectory=True)
-                self.oc_problem.plot_position_trajectories(z_traj.detach(), self.policy)
+                z_traj = self.oc_problem.generate_trajectory(
+                    self.policy, z0, self.oc_problem.nt, return_full_trajectory=True,
+                )
+                self._plot_rollout(z_traj, save_path=self.run_io.training_plot_path(epoch))
 
             # === Save CSV after each epoch ===
             pd.DataFrame(self.history).to_csv(history_path, index=False)
-        #self.plot_loss_curve(save_dir, save_model_name)
+
+        self._finalize(best_loss=best_loss, verbose=verbose)
         return self.history
-    
-    def plot_loss_curve(self, save_dir, save_model_name):
-        plt.figure(figsize=(10, 6)); plt.yscale('log'); plt.grid(True)
+
+    # ------------------------------------------------------------------
+    # Post-training artifacts
+    # ------------------------------------------------------------------
+    def _finalize(self, best_loss: float, verbose: bool = True) -> None:
+        """Reload the best policy, write the loss curve, the final rollout
+        figure and the saved trajectory tensor."""
+        if verbose:
+            print("-" * 60)
+            print("Finalizing run: writing loss curve, final rollout figure, "
+                  "and saving the rolled-out trajectory.")
+
+        # 1) Loss curve over the whole run.
+        self.plot_loss_curve(self.run_io.loss_curve_path())
+
+        # 2) Reload best checkpoint so the final artifacts reflect best loss.
+        ckpt_path = self.run_io.policy_path()
+        if os.path.isfile(ckpt_path):
+            self.policy.load_state_dict(
+                torch.load(ckpt_path, map_location=self.device, weights_only=True),
+            )
+            if verbose:
+                print(f"  reloaded best checkpoint (loss={best_loss:.4e}) from {ckpt_path}")
+        self.policy.eval()
+
+        # 3) Roll out the best policy on a fresh test IC.
+        with torch.no_grad():
+            z0_test = self.oc_problem.sample_initial_condition()
+            z_traj = self.oc_problem.generate_trajectory(
+                self.policy, z0_test, self.oc_problem.nt, return_full_trajectory=True,
+            )
+
+        # 4) Final rollout figure -> rollouts/.
+        self._plot_rollout(z_traj, save_path=self.run_io.rollout_path())
+        if verbose:
+            print(f"  wrote rollout figure -> {self.run_io.rollout_path()}")
+
+        # 5) Saved trajectory tensor for later replay / analysis -> rollouts/.
+        torch.save(
+            {
+                "z_traj": z_traj.detach().cpu(),
+                "z0": z0_test.detach().cpu(),
+                "run_id": self.run_io.run_id,
+                "tag": self.run_io.tag,
+                "problem_cls_name": self.run_io.problem_cls_name,
+            },
+            self.run_io.trajectory_path(),
+        )
+        if verbose:
+            print(f"  wrote trajectory tensor -> {self.run_io.trajectory_path()}")
+
+    def plot_loss_curve(self, save_path: str) -> None:
+        """Render the loss curve for the current run to ``save_path``."""
+        if not self.history.get("epoch"):
+            return
+        fig = plt.figure(figsize=(10, 6))
+        plt.yscale('log')
+        plt.grid(True)
         plt.plot(self.history['epoch'], self.history['loss'], label='Total Loss')
-        plt.title(f'Training Loss (Mode: {self.mode})'); plt.legend()
-        plt.savefig(os.path.join(save_dir, f'loss_curve_{save_model_name}.png')); plt.close()
-
-if __name__ == '__main__':
-    from Quadcopter import QuadcopterOC
-    from CVXPolicy import CVXPolicy_MC, CVXPolicy_Quadcopter
-
-    # --- Shared Configuration ---
-    config_OC = {'batch_size': 10, 'nt': 2, 't_final': 10.0, }
-    config_train = { 'lr': 1e-3, 'epochs': 2}
-    device = 'cpu'
-
-    # --- 1. Train with Standard Mode ---
-    print("\n\n--- Testing Standard Mode ---")
-    mc_problem_std = MountainCarOC(device=device, **config_OC)
-    implicit_net = ImplicitNetOC(
-        mc_problem_std.state_dim, mc_problem_std.control_dim, oc_problem=mc_problem_std, dev=device
-    ).to(device)
-    optimizer_std = torch.optim.Adam(implicit_net.parameters(), lr=config_train['lr'])
-
-    trainer_std = OptimalControlTrainer(implicit_net, mc_problem_std, optimizer_std, device=device)
-    trainer_std.set_mode('standard')
-    z0_std = mc_problem_std.sample_initial_condition()
-    trainer_std.train(z0_std, num_epochs=config_train['epochs'], save_model_name='best_standard_policy')
-    
-    # --- 2. Train with CVXPY Mode ---
-    print("\n--- Testing CVXPY Mode ---")
-    from ImplicitNets import Phi
-    mc_problem = MountainCarOC(device=device, **config_OC)
-    Phi = Phi(3, 10, mc_problem.state_dim)
-    cvx_policy = CVXPolicy_MC(mc_problem.state_dim, mc_problem.control_dim,
-                            mc_problem.power, p_net=Phi).to(device)
-    optimizer = torch.optim.Adam(cvx_policy.parameters(), lr=config_train['lr'])
-    
-    trainer_cvx = OptimalControlTrainer(cvx_policy, mc_problem, optimizer, device=device)
-    trainer_cvx.set_mode('cvx')
-    z0 = mc_problem.sample_initial_condition()
-    trainer_cvx.train(z0, num_epochs=config_train['epochs'], save_model_name='best_cvx_policy')
-
-
-    # check grad_u H of the trained model
-    print("\n--- Checking grad_u H of the trained model ---")
-    
-    
+        plt.title(f'Training Loss (Mode: {self.mode}, run: {self.run_io.run_id})')
+        plt.xlabel('epoch')
+        plt.ylabel('loss')
+        plt.legend()
+        plt.savefig(save_path, dpi=150, bbox_inches="tight")
+        plt.close(fig)

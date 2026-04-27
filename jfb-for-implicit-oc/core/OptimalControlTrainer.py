@@ -321,12 +321,13 @@ class OptimalControlTrainer:
 
             # === CHANGE: Updated print statement to show HJB/ADJ costs and memory ===
             if verbose:
-                print(f"Epoch {epoch:03d} | Loss: {step_info['loss']:.3e} | L: {step_info['running_cost']:.3e} | G: {step_info['terminal_cost']:.3e} | "
+                _RED, _RESET = "\033[1;31m", "\033[0m"
+                print(f"{_RED}Epoch {epoch:03d}{_RESET} | Loss: {step_info['loss']:.3e} | L: {step_info['running_cost']:.3e} | G: {step_info['terminal_cost']:.3e} | "
                       f"HJB: {step_info.get('cHJB', 0):.3e} | HJB fin: {step_info.get('cHJBfin',0):.3e} |Adj: {step_info.get('cadj', 0):.2e} | "
                       f"Grad: {grad_norm:.2e} | Time: {time_per_epoch:.2f}s | "
                       f"CPU Mem: {memory_MB:.1f}MB | Max CPU: {max_memory_MB:.1f}MB | "
                       f"GPU Mem: {gpu_memory_MB:.1f}MB | Max GPU: {gpu_max_memory_MB:.1f}MB | lr: {step_info['lr']:.3e} | "
-                      f"max_fp_itrs: {step_info['max_fp_itrs']} | res_norm: {step_info['max_fp_res_norm']:.3e} | max_grad_H: {step_info['max_grad_H']:.3e} | avg_grad_H: {step_info['avg_grad_H']:.3e} ")
+                      f"max_fp_itrs: {step_info['max_fp_itrs']} | res_norm: {step_info['max_fp_res_norm']:.3e} | max_grad_H: {step_info['max_grad_H']:.3e} | avg_grad_H: {step_info['avg_grad_H']:.3e}\n")
 
             if step_info['loss'] < best_loss:
                 best_loss = step_info['loss']

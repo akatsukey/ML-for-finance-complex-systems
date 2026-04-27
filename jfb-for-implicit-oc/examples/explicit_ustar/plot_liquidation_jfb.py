@@ -29,13 +29,22 @@ import argparse
 import os
 import sys
 
+import numpy as np
 import torch
 
 # Local imports: script may be run from project root or this directory.
 # core/ and models/ still use flat imports, so they need to be on sys.path
 # in addition to the package root (which is needed for `core.paths`, etc.).
-_ROOT = os.path.dirname(os.path.abspath(__file__))
-for _p in (_ROOT, os.path.join(_ROOT, "core"), os.path.join(_ROOT, "models")):
+# This script lives at jfb-for-implicit-oc/examples/explicit_ustar/, so we
+# need to climb two directories up to reach the project root.
+_HERE = os.path.dirname(os.path.abspath(__file__))           # .../examples/explicit_ustar
+_ROOT = os.path.dirname(os.path.dirname(_HERE))              # .../jfb-for-implicit-oc
+for _p in (
+    _HERE,                                                   # liquidation_benchmark.py
+    _ROOT,                                                   # `core.paths` package import
+    os.path.join(_ROOT, "core"),                             # ImplicitNets, OptimalControlTrainer
+    os.path.join(_ROOT, "models"),                           # LiquidationPortfolio
+):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
@@ -70,6 +79,18 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default="JFB",
         help="Run tag passed to OptimalControlTrainer (becomes part of every artifact filename).",
+    )
+    p.add_argument(
+        "--seed",
+        type=int,
+        default=420,
+        help="Seed applied to torch and numpy at the start of main() for "
+             "reproducibility (default: 420). Ignored when --no-seed is set.",
+    )
+    p.add_argument(
+        "--no-seed",
+        action="store_true",
+        help="Skip RNG seeding entirely (every run gets a fresh init).",
     )
     # Problem parameters (must match training when using --checkpoint)
     p.add_argument("--t-final", type=float, default=2.0)
@@ -127,6 +148,13 @@ def build_policy(prob: LiquidationPortfolioOC, device: str) -> ImplicitNetOC:
 def main() -> None:
     args = parse_args()
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+
+    if args.no_seed:
+        print("RNG seeding disabled (--no-seed); run will not be reproducible.")
+    else:
+        torch.manual_seed(args.seed)
+        np.random.seed(args.seed)
+        print(f"Seeded torch and numpy with seed={args.seed}.")
 
     prob = build_problem(args, device)
     inn = build_policy(prob, device)

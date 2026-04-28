@@ -151,8 +151,20 @@ class AlmgrenChrissBVPSolver(ReferenceSolver):
 
     def _u_star(self, q: np.ndarray, S: np.ndarray,
                 p_q: np.ndarray, p_S: np.ndarray) -> np.ndarray:
-        """Optimal control from the linear stationarity condition (γ=2, p_X=-1)."""
-        return (-p_q - self.kappa * p_S - S) / (2.0 * self.eta)
+        """Optimal control from the linear stationarity condition (γ=2, p_X=-1).
+
+        With Hamiltonian ``H = L + p^T f`` (the convention used everywhere in
+        this codebase, in particular in :meth:`ImplicitOC.compute_grad_H_u`),
+        ``∂H/∂u = -p_q - κ p_S + p_X S - 2 η p_X u``.  Setting this to zero
+        and using ``p_X = -1`` (since ``∂G/∂X = -1`` and ``∂H/∂X = 0``) gives
+
+            u* = (p_q + κ p_S + S) / (2 η).
+
+        The previous implementation returned the negative of this value,
+        which forced the BVP into a sign-flipped costate solution that
+        disagreed with the JFB Hamiltonian convention.
+        """
+        return (p_q + self.kappa * p_S + S) / (2.0 * self.eta)
 
     def _odes(self, t: np.ndarray, y: np.ndarray) -> np.ndarray:
         q, S, p_q, p_S = y
@@ -203,7 +215,12 @@ class AlmgrenChrissBVPSolver(ReferenceSolver):
         y_init = np.zeros((4, len(t_nodes)))
         y_init[0] = np.linspace(q0, 0.0, len(t_nodes))
         y_init[1] = S0
-        y_init[2] = -(self.sigma ** 2) * q0 * (self.T - t_nodes)
+        # Initial guess for p_q(t).  Adjoint ODE ``dp_q/dt = -σ² q`` with
+        # ``p_q(T) = 2 α q(T)`` and a linear-liquidation guess for q(t)
+        # integrates backwards as p_q(t) ≥ p_q(T) ≥ 0, so the sign here is
+        # POSITIVE.  (The previous version had a minus sign here, consistent
+        # only with the buggy sign-flipped ``_u_star``.)
+        y_init[2] = (self.sigma ** 2) * q0 * (self.T - t_nodes)
         y_init[3] = 0.0
 
         bc = lambda ya, yb: self._bc(ya, yb, q0, S0)

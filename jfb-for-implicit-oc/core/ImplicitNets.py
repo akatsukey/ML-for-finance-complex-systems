@@ -331,10 +331,15 @@ class ImplicitNetOC(nn.Module, ABC):
                 #     print("torch grad is NOT enabled")
                 for i in range(self.max_iters):
                     u_old = u.clone()
-                    u = self.T(u, x, t)
+                    # Projected fixed-point iteration: clamp every step so the
+                    # operator's fixed point is the KKT point of the box-constrained
+                    # ``min H``, not the unconstrained stationary point.  When
+                    # ``use_control_limits`` is False this is a no-op.
+                    u = self.apply_control_limits(self.T(u, x, t))
                     assert u.shape == (batch_size, self.control_dim)
-                    
-                    # Compute maximum residual norm over batches
+
+                    # ``u - u_old`` is the projected gradient step; ``/ self.alpha``
+                    # converts it to a (projected) ``||grad H||`` for diagnostics.
                     max_res_norm = (torch.norm(u - u_old, dim=1).max())/self.alpha
 
                     if record_trace:
@@ -407,7 +412,12 @@ class ImplicitNetOC(nn.Module, ABC):
             else:
                 return output
         else:
-            output = u
+            # Apply the same projection used during training so that downstream
+            # rollouts / benchmarks see the same constrained policy that was
+            # trained.  Without this the eval-time policy is unbounded and can
+            # leave the configured ``[u_min, u_max]`` box (root cause of the
+            # huge ``u(0)`` spikes in benchmark plots).
+            output = self.apply_control_limits(u)
             return output
 
     def set_convergence_tracking(self, track=True):
@@ -452,10 +462,14 @@ class ImplicitNetOC(nn.Module, ABC):
         batch_sz, d = u0.shape
         u_hist = torch.zeros(batch_sz, m, d, dtype=u0.dtype, device=u0.device)
         T_hist = torch.zeros(batch_sz, m, d, dtype=u0.dtype, device=u0.device)
-        u_hist[:,0] = u0.view(batch_sz, -1)
-        T_hist[:,0] = self.T(u0, x, t).view(batch_sz,-1)
+        # Project the initial guess and every ``T`` evaluation onto the
+        # control box.  The fixed point of the (projected) operator is then
+        # the KKT point of the box-constrained ``min H``, which matches the
+        # training-time projection in ``forward`` and the plain-FP path.
+        u_hist[:,0] = self.apply_control_limits(u0).view(batch_sz, -1)
+        T_hist[:,0] = self.apply_control_limits(self.T(u_hist[:,0].view_as(u0), x, t)).view(batch_sz,-1)
         u_hist[:,1] = T_hist[:,0]
-        T_hist[:,1] = self.T(T_hist[:,0].view_as(u0), x, t).view(batch_sz,-1)
+        T_hist[:,1] = self.apply_control_limits(self.T(T_hist[:,0].view_as(u0), x, t)).view(batch_sz,-1)
         H = torch.zeros(batch_sz, m+1, m+1, dtype=u0.dtype, device=u0.device)
         H[:,0,1:] = 1.0
         H[:,1:,0] = 1.0
@@ -480,9 +494,12 @@ class ImplicitNetOC(nn.Module, ABC):
             except RuntimeError:  # H singular: fall back to least-squares (silent; rare).
                 alpha = torch.linalg.lstsq(H[:,:(M+1),:(M+1)], Batch_RHS[:,:(M+1)])[0][:,1:(M+1),0]
 
-            #Update data structures
-            u_hist[:,k%m] = (1.0-beta)*((alpha[:,None]@u_hist[:,:M])[:,0]) + beta*((alpha[:,None]@T_hist[:,:M])[:,0])
-            T_hist[:,k%m] = self.T(u_hist[:,k%m].view_as(u0), x, t).view(batch_sz, -1)
+            # The AA mixing can produce iterates outside the box (negative
+            # alpha weights); project after mixing so subsequent ``T`` calls
+            # are evaluated on feasible controls.
+            mixed = (1.0-beta)*((alpha[:,None]@u_hist[:,:M])[:,0]) + beta*((alpha[:,None]@T_hist[:,:M])[:,0])
+            u_hist[:,k%m] = self.apply_control_limits(mixed.view_as(u0)).view(batch_sz, -1)
+            T_hist[:,k%m] = self.apply_control_limits(self.T(u_hist[:,k%m].view_as(u0), x, t)).view(batch_sz, -1)
             #res_k = ((T_hist[:,k%m] - u_hist[:,k%m]).norm().item()) / (1.0e-9 + T_hist[:,k%m].norm().item())
             res_k = torch.norm(T_hist[:,k%m] - u_hist[:,k%m], dim=1).max().item()
             if trace is not None:

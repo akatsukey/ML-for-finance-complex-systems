@@ -139,6 +139,25 @@ def parse_args() -> argparse.Namespace:
         help="Skip the diagnostic figure.",
     )
     # ------------------------------------------------------------------ #
+    # Full-AD vs JFB switch.                                             #
+    # When set, the script trains TWO policies on the same problem:       #
+    #   1. analytic JFB        (track_all_fp_iters=False, default).      #
+    #   2. full autograd       (track_all_fp_iters=True).                #
+    # Both are then overlaid in the final benchmark figure against the   #
+    # exact BVP reference so the JFB approximation can be compared       #
+    # head-to-head with the unrolled-AD ground truth. The flag itself    #
+    # is intentionally NOT folded into ``--tag``; the per-run trainer     #
+    # tag for the AD pass is suffixed internally with ``-fullAD`` purely  #
+    # so the two trainings do not overwrite each other's checkpoints.    #
+    # ------------------------------------------------------------------ #
+    p.add_argument(
+        "--full-ad", dest="full_ad", action="store_true", default=False,
+        help="Also train a second policy with full autograd through every "
+             "inner-FP iteration (track_all_fp_iters=True). When set, the "
+             "benchmark figure overlays the JFB-trained u(t) and the "
+             "AD-trained u(t) against the exact BVP reference.",
+    )
+    # ------------------------------------------------------------------ #
     # Control-bound knobs.                                               #
     # The original script clamped u to [0, 10]. The lower bound u_min=0  #
     # was the dominant failure mode in earlier runs: with the BC         #
@@ -235,6 +254,137 @@ def build_policy(prob: LiquidationPortfolioOC, device: str,
     ).to(device)
 
 
+def _train_or_load(
+    prob: LiquidationPortfolioOC,
+    args: argparse.Namespace,
+    device: str,
+    *,
+    full_ad: bool,
+    trainer_tag: str,
+) -> ImplicitNetOC:
+    """Build a fresh ImplicitNetOC and either load weights from
+    ``args.checkpoint`` or train from scratch.
+
+    Parameters
+    ----------
+    full_ad
+        Sets ``prob.track_all_fp_iters`` for the duration of training so the
+        backward pass differentiates through every inner-FP iteration.  At
+        eval time the flag is irrelevant (forward always runs the FP loop
+        under ``no_grad``), so we leave it untouched after training.
+    trainer_tag
+        Tag handed to ``OptimalControlTrainer``.  This is what shows up in
+        artifact filenames; ``args.tag`` is left untouched here so the
+        public ``--tag`` value is never silently mutated by ``--full-ad``.
+    """
+    inn = build_policy(
+        prob, device,
+        fp_alpha=args.fp_alpha,
+        fp_max_iters=args.fp_max_iters,
+        fp_tol=args.fp_tol,
+        use_aa=args.use_aa,
+        aa_beta=args.aa_beta,
+        clamp_u=args.clamp_u,
+        u_min=args.u_min,
+        u_max=args.u_max,
+    )
+
+    if args.checkpoint:
+        ckpt = os.path.abspath(args.checkpoint)
+        if not os.path.isfile(ckpt):
+            raise SystemExit(f"Checkpoint not found: {ckpt}")
+        state = torch.load(ckpt, map_location=device)
+        inn.load_state_dict(state, strict=True)
+        print(f"Loaded policy weights from: {ckpt}")
+        inn.eval()
+        return inn
+
+    if args.train_epochs <= 0:
+        raise SystemExit("Provide --checkpoint or set --train-epochs > 0.")
+
+    # Anderson + full autograd is incompatible: the inner linalg.solve in
+    # `anderson_direct` builds an autograd tape per iteration and quickly
+    # explodes in memory.  Warn the user but keep the run going so the
+    # comparison still happens.
+    if full_ad and args.use_aa:
+        print(
+            "[warn] --full-ad with Anderson acceleration ON is heavy on memory "
+            "and gradient noise; consider --no-aa for the AD pass."
+        )
+
+    prob.track_all_fp_iters = full_ad
+
+    opt = torch.optim.Adam(inn.parameters(), lr=args.lr)
+    sched = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        opt, mode="min", factor=0.5, patience=8
+    )
+    trainer = OptimalControlTrainer(
+        inn, prob, opt, scheduler=sched, device=device, tag=trainer_tag,
+    )
+    trainer.set_mode("standard")
+    print(
+        f"Training {'full-AD' if full_ad else 'JFB (analytic implicit grad)'} "
+        f"policy [trainer_tag={trainer_tag!r}] for {args.train_epochs} epochs..."
+    )
+    z0_train = prob.sample_initial_condition()
+    trainer.train(
+        z0_train,
+        num_epochs=args.train_epochs,
+        verbose=True,
+        plot_frequency=10,
+    )
+    best_path = trainer.run_io.policy_path()
+    if os.path.isfile(best_path):
+        print(f"Best policy stored at: {os.path.abspath(best_path)}")
+
+    # Reset the flag so subsequent rollouts/eval are deterministic.
+    prob.track_all_fp_iters = False
+    inn.eval()
+    return inn
+
+
+def _write_diagnostics(
+    prob: LiquidationPortfolioOC,
+    policy: ImplicitNetOC,
+    z0_diag: np.ndarray,
+    args: argparse.Namespace,
+    *,
+    label: str,
+    out_filename: str,
+) -> None:
+    diag_traj = diagnostic_rollout(
+        prob, policy,
+        torch.as_tensor(z0_diag, dtype=torch.float32, device=prob.device),
+        label=label,
+        record_trace_at_t0=True,
+    )
+    traj_for_plot = diag_traj
+    extra_panels = []
+    if abs(float(prob.gamma) - 2.0) < 1e-6:
+        try:
+            traj_for_plot = attach_bvp_costate_to_meta(
+                diag_traj, prob, np.asarray(z0_diag),
+            )
+            extra_panels = liquidation_costate_vs_bvp_panels()
+        except Exception as exc:
+            print(f"  [warn] BVP costate overlay skipped: {exc}")
+
+    diag_panels = diagnostic_panels(state_components=(0, 1)) + extra_panels
+    diag_out = os.path.join(
+        results_dir(type(prob).__name__, "benchmark"),
+        out_filename,
+    )
+    BenchmarkPlotter(diag_panels, ncols=2).plot(
+        [traj_for_plot], save_path=diag_out,
+        title=(
+            f"{label} diagnostics — α_fp={args.fp_alpha:.2g}, "
+            f"max_iters={args.fp_max_iters}, tol={args.fp_tol:.0e}, "
+            f"AA={'on' if args.use_aa else 'off'}"
+        ),
+    )
+    print(f"Diagnostics figure written to: {os.path.abspath(diag_out)}")
+
+
 def main() -> None:
     args = parse_args()
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -247,17 +397,6 @@ def main() -> None:
         print(f"Seeded torch and numpy with seed={args.seed}.")
 
     prob = build_problem(args, device)
-    inn = build_policy(
-        prob, device,
-        fp_alpha=args.fp_alpha,
-        fp_max_iters=args.fp_max_iters,
-        fp_tol=args.fp_tol,
-        use_aa=args.use_aa,
-        aa_beta=args.aa_beta,
-        clamp_u=args.clamp_u,
-        u_min=args.u_min,
-        u_max=args.u_max,
-    )
     print(
         "Inner FP solver: "
         f"alpha={args.fp_alpha:.3g}  max_iters={args.fp_max_iters}  "
@@ -273,39 +412,32 @@ def main() -> None:
         f"alphaHJB=({args.alpha_hjb_run:g}, {args.alpha_hjb_fin:g})  "
         f"alphaadj=({args.alpha_adj_run:g}, {args.alpha_adj_fin:g})"
     )
+    print(
+        "Backprop regime: "
+        + ("JFB + full-AD (overlay)" if args.full_ad else "JFB only")
+    )
 
-    if args.checkpoint:
-        ckpt = os.path.abspath(args.checkpoint)
-        if not os.path.isfile(ckpt):
-            raise SystemExit(f"Checkpoint not found: {ckpt}")
-        state = torch.load(ckpt, map_location=device)
-        inn.load_state_dict(state, strict=True)
-        print(f"Loaded policy weights from: {ckpt}")
-    else:
-        if args.train_epochs <= 0:
-            raise SystemExit("Provide --checkpoint or set --train-epochs > 0.")
-        opt = torch.optim.Adam(inn.parameters(), lr=args.lr)
-        sched = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            opt, mode="min", factor=0.5, patience=8
-        )
-        trainer = OptimalControlTrainer(
-            inn, prob, opt, scheduler=sched, device=device, tag=args.tag,
-        )
-        trainer.set_mode("standard")
-        z0_train = prob.sample_initial_condition()
-        trainer.train(
-            z0_train,
-            num_epochs=args.train_epochs,
-            verbose=True,
-            plot_frequency=10,
-        )
-        # The trainer already reloaded the best checkpoint into `inn` during
-        # finalize(). Keep the path around in case downstream tooling wants it.
-        best_path = trainer.run_io.policy_path()
-        if os.path.isfile(best_path):
-            print(f"Best policy stored at: {os.path.abspath(best_path)}")
+    # Always train (or load) the analytic-JFB policy.  When --full-ad is set
+    # we also train a second policy through full autograd.  The user's
+    # ``--tag`` is preserved verbatim for the JFB run; the AD run gets an
+    # internal ``-fullAD`` suffix so file artifacts don't collide.
+    inn_jfb = _train_or_load(
+        prob, args, device, full_ad=False, trainer_tag=args.tag,
+    )
 
-    inn.eval()
+    inn_ad: ImplicitNetOC | None = None
+    if args.full_ad:
+        if args.checkpoint:
+            print(
+                "[warn] --full-ad ignored: --checkpoint loads a single policy "
+                "(no second AD-trained model is produced)."
+            )
+        else:
+            inn_ad = _train_or_load(
+                prob, args, device, full_ad=True,
+                trainer_tag=f"{args.tag}-fullAD",
+            )
+
     bench = LiquidationBenchmark(prob)
     z0_plot = prob.sample_initial_condition()
 
@@ -313,46 +445,28 @@ def main() -> None:
         results_dir(type(prob).__name__, "benchmark"),
         "jfb_vs_exactbvp_benchmark.png",
     )
-    bench.plot_comparison(inn, z0_plot, save_path=out, n_show=args.n_show)
+    if inn_ad is None:
+        bench.plot_comparison(inn_jfb, z0_plot, save_path=out, n_show=args.n_show)
+    else:
+        bench.plot_comparison(
+            {"JFB (analytic)": inn_jfb, "JFB (full AD)": inn_ad},
+            z0_plot, save_path=out, n_show=args.n_show,
+        )
     print(f"Figure written to: {os.path.abspath(out)}")
 
     if args.diagnostics:
-        # Single z0 for the diagnostic rollout: pick the first sample from
-        # the same batch we just plotted, so the diagnostic curves correspond
-        # to a trajectory visible in the comparison figure.
         z0_diag = z0_plot[0].detach().cpu().numpy().reshape(-1)
-        diag_traj = diagnostic_rollout(
-            prob, inn,
-            torch.as_tensor(z0_diag, dtype=torch.float32, device=prob.device),
+        _write_diagnostics(
+            prob, inn_jfb, z0_diag, args,
             label="JFB",
-            record_trace_at_t0=True,
+            out_filename=f"jfb_diagnostics_{args.tag}.png",
         )
-        # Optional: overlay learned vs exact-BVP costates (γ=2 only).
-        traj_for_plot = diag_traj
-        extra_panels = []
-        if abs(float(prob.gamma) - 2.0) < 1e-6:
-            try:
-                traj_for_plot = attach_bvp_costate_to_meta(
-                    diag_traj, prob, np.asarray(z0_diag),
-                )
-                extra_panels = liquidation_costate_vs_bvp_panels()
-            except Exception as exc:
-                print(f"  [warn] BVP costate overlay skipped: {exc}")
-
-        diag_panels = diagnostic_panels(state_components=(0, 1)) + extra_panels
-        diag_out = os.path.join(
-            results_dir(type(prob).__name__, "benchmark"),
-            f"jfb_diagnostics_{args.tag}.png",
-        )
-        BenchmarkPlotter(diag_panels, ncols=2).plot(
-            [traj_for_plot], save_path=diag_out,
-            title=(
-                f"JFB diagnostics — α_fp={args.fp_alpha:.2g}, "
-                f"max_iters={args.fp_max_iters}, tol={args.fp_tol:.0e}, "
-                f"AA={'on' if args.use_aa else 'off'}"
-            ),
-        )
-        print(f"Diagnostics figure written to: {os.path.abspath(diag_out)}")
+        if inn_ad is not None:
+            _write_diagnostics(
+                prob, inn_ad, z0_diag, args,
+                label="JFB (full AD)",
+                out_filename=f"jfb_diagnostics_{args.tag}-fullAD.png",
+            )
 
 
 if __name__ == "__main__":

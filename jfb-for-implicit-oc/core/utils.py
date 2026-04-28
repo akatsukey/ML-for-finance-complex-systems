@@ -62,18 +62,28 @@ class GradientTester:
     def check_grad_f_z(oc_problem, z=None, u=None, t = None,  verbose=True):
         """
         Check the gradient of dynamics with respect to state using PyTorch's autograd.
-        
+
+        Convention note
+        ---------------
+        ``compute_grad_f_z`` is required by :meth:`ImplicitOC.compute_grad_H_z`
+        to return a tensor in *transposed* Jacobian layout, i.e.
+        ``grad[b, i, s] = ∂f_s/∂z_i`` (state-derivative axis first, dynamics
+        component axis second).  ``torch.func.jacrev`` returns the natural
+        mathematical Jacobian ``J[b, s, i] = ∂f_s/∂z_i`` (output first, input
+        second), so we ``permute(0, 2, 1)`` the analytical tensor before
+        comparing — exactly mirroring :meth:`check_grad_f_u`.
+
         Args:
             oc_problem: An instance of ImplicitOC
             z (torch.Tensor, optional): State vector
             u (torch.Tensor, optional): Control vector
             t (float, optional): Time
             verbose (bool, optional): Whether to print details
-            
+
         Returns:
             tuple: (analytical_grad, autograd_grad, relative_error)
         """
-        
+
         batch_size = oc_problem.batch_size
         state_dim = oc_problem.state_dim
         control_dim = oc_problem.control_dim
@@ -91,10 +101,11 @@ class GradientTester:
         z_autograd = z.clone().detach().requires_grad_(True)
         
         autograd_gradf_z = torch.vmap(torch.func.jacrev(oc_problem.compute_f, argnums = 1))(t,z_autograd,u)
-        
-        # Compute error
-        error = torch.norm(analytical_grad - autograd_gradf_z) / (torch.norm(analytical_grad) + 1e-8)
-        
+
+        # Permute analytical (transposed convention) into the natural layout
+        # produced by jacrev before computing the residual.
+        error = torch.norm(analytical_grad.permute(0, 2, 1) - autograd_gradf_z) / (torch.norm(analytical_grad) + 1e-8)
+
         if verbose:
             print("-" * 40)
             print(f"Gradient f_z check (autograd):")

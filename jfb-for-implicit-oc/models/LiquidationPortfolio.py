@@ -247,9 +247,16 @@ class LiquidationPortfolioOC(ImplicitOC):
         """
         Jacobian ``∂f/∂z`` of the dynamics with respect to the state.
 
-        Shape ``(batch, state_dim, state_dim)`` — a square Jacobian per batch element.
-        Most entries vanish: only ``dX/dt`` depends on ``S`` (through ``S*u``), so the
-        dynamics couple weakly to the state in this stylized model.
+        Shape ``(batch, state_dim, state_dim)``.  **Layout convention** matches
+        :meth:`compute_grad_f_u` and what :meth:`ImplicitOC.compute_grad_H_z`
+        consumes via ``bmm(grad, p)``: the **first** index is the state-derivative
+        axis (``∂/∂z_i``), the **second** index is the dynamics-component axis
+        (``f_s``).  In other words ``grad[b, i, s] == ∂f_s/∂z_i`` — the
+        *transpose* of the natural mathematical Jacobian, exactly as
+        ``torch.bmm(grad, p)`` requires to produce ``∂(p^T f)/∂z``.
+
+        Most entries vanish: only ``dX/dt`` depends on ``S`` (through ``S*u``),
+        so ``∂f_X/∂z_S = u`` lives at slot ``[i=S=1, s=X=2]``.
 
         Args:
             t: Current time.
@@ -257,7 +264,7 @@ class LiquidationPortfolioOC(ImplicitOC):
             u: Control, shape ``(batch, control_dim)``.
 
         Returns:
-            ``(batch, state_dim, state_dim)`` Jacobian.
+            ``(batch, state_dim, state_dim)`` Jacobian in transposed convention.
         """
         if z.dim() == 1:
             z = z.unsqueeze(0)
@@ -267,10 +274,11 @@ class LiquidationPortfolioOC(ImplicitOC):
             squeeze = False
 
         batch = z.shape[0]
-        # Square Jacobian (batch, 3, 3): columns index ∂/∂q, ∂/∂S, ∂/∂X; rows index state equations.
+        # Square Jacobian (batch, 3, 3): grad[b, i, s] = ∂f_s/∂z_i.
+        # Indices: q=0, S=1, X=2.
         grad = torch.zeros(batch, 3, 3, device=z.device)
 
-        grad[:, 2, 1] = u.squeeze(1)  # only dX/dt depends on S; ∂(S*u)/∂S = u
+        grad[:, 1, 2] = u.squeeze(1)  # ∂f_X/∂z_S = ∂(S*u)/∂S = u; all others zero
 
         return grad[0] if squeeze else grad
 

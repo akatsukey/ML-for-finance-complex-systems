@@ -243,3 +243,12 @@ If you use this code, please cite our paper:
       url={https://arxiv.org/abs/2602.00921},
 }
 ```
+
+Run this command to get somewhat good graphs
+```
+python examples/explicit_ustar/plot_liquidation_jfb.py \                    
+  --fp-alpha 1e-3 --fp-max-iters 200 --fp-tol 1e-4 --no-aa \
+  --clamp-u --u-min 0 --u-max 10 \
+  --t-final 10.0 --nt 100 \
+  --tag JFB-old-solver-regime
+```

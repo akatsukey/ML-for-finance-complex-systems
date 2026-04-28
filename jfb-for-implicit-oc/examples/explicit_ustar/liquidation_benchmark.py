@@ -45,7 +45,8 @@ variable from :mod:`benchmarking.paths` is also honored.
 from __future__ import annotations
 
 import os
-from typing import Any, Optional
+from collections.abc import Mapping
+from typing import Any, Optional, Union
 
 import numpy as np
 import torch
@@ -115,6 +116,17 @@ class LiquidationBenchmark:
         "jfb":   "#d6604d",
         "band":  "#92c5de",
     }
+    # Palette used when ``plot_comparison`` is called with a dict of
+    # labeled policies (e.g. JFB analytic vs full-AD).  The first slot
+    # is the legacy JFB red so single-policy calls remain visually
+    # identical to previous runs.
+    _POLICY_PALETTE = (
+        "#d6604d",  # red       (JFB analytic)
+        "#4daf4a",  # green     (JFB full AD)
+        "#984ea3",  # purple
+        "#ff7f00",  # orange
+        "#377eb8",  # blue (avoid clashing with the BVP exact color)
+    )
     _LW = 2.0
 
     def __init__(self, prob: Any, n_bvp_nodes: int = 500, bvp_tol: float = 1e-9):
@@ -181,22 +193,44 @@ class LiquidationBenchmark:
 
     def plot_comparison(
         self,
-        policy: Any,
+        policy: Union[Any, Mapping[str, Any]],
         z0_batch: torch.Tensor,
         save_path: Optional[str] = None,
         title: Optional[str] = None,
         n_show: int = 5,
     ) -> plt.Figure:
-        """Six-panel comparison figure preserving the legacy layout."""
+        """Six-panel comparison figure preserving the legacy layout.
+
+        ``policy`` accepts either a single policy object (legacy behaviour)
+        or a ``Mapping[label, policy]``.  When a mapping is supplied each
+        labeled policy is rolled out separately and overlaid on every panel
+        with a distinct color drawn from :attr:`_POLICY_PALETTE`; the bar
+        chart and ``u(0)`` scatter fan out to one bar / one marker shape per
+        policy.  The exact BVP reference (γ=2 only) is drawn once.
+        """
         import matplotlib.gridspec as gridspec
 
         prob = self.prob
         batch = min(z0_batch.shape[0], n_show)
         z0 = z0_batch[:batch].to(prob.device)
 
-        jfb_solver = JFBPolicyRollout(prob, policy)
-        jfb_trajs = [jfb_solver.solve(z0[b]) for b in range(batch)]
-        t_jfb = jfb_trajs[0].t
+        # Normalise input to a list of (label, color, trajectories).
+        if isinstance(policy, Mapping):
+            labeled = list(policy.items())
+            if not labeled:
+                raise ValueError("plot_comparison: empty policy dict.")
+        else:
+            labeled = [("JFB", policy)]
+
+        rollouts: list[tuple[str, str, list[Trajectory]]] = []
+        for i, (label, pol) in enumerate(labeled):
+            color = self._POLICY_PALETTE[i % len(self._POLICY_PALETTE)]
+            solver = JFBPolicyRollout(prob, pol)
+            trajs = [solver.solve(z0[b]) for b in range(batch)]
+            rollouts.append((label, color, trajs))
+        # Reference time grids come from the first policy (all share the
+        # same problem, so identical).
+        t_jfb = rollouts[0][2][0].t
         t_u = t_jfb[:-1]
 
         exact_trajs: list[Trajectory] = []
@@ -213,28 +247,23 @@ class LiquidationBenchmark:
         axs = [[fig.add_subplot(gs[r, c]) for c in range(2)] for r in range(3)]
 
         c_ex = self._COLORS["exact"]
-        c_jfb = self._COLORS["jfb"]
         lw = self._LW
         alpha_line = 0.75
 
-        for b in range(batch):
-            kw_jfb = dict(color=c_jfb, lw=lw, alpha=alpha_line,
-                          label="JFB" if b == 0 else None)
-            kw_ex = dict(color=c_ex, lw=lw, alpha=alpha_line, ls="--",
-                         label="Exact (BVP)" if b == 0 else None)
+        for label, color, trajs in rollouts:
+            for b in range(batch):
+                kw = dict(color=color, lw=lw, alpha=alpha_line,
+                          label=label if b == 0 else None)
+                tr = trajs[b]
+                axs[0][0].plot(t_jfb, tr.z[:, 0], **kw)
+                axs[0][1].plot(t_u,   tr.u[:, 0], **kw)
+                axs[1][0].plot(t_jfb, tr.z[:, 1], **kw)
+                axs[1][1].plot(t_jfb, tr.z[:, 2], **kw)
 
-            jfb = jfb_trajs[b]
-            q_jfb = jfb.z[:, 0]
-            S_jfb = jfb.z[:, 1]
-            X_jfb = jfb.z[:, 2]
-            u_vals = jfb.u[:, 0]
-
-            axs[0][0].plot(t_jfb, q_jfb, **kw_jfb)
-            axs[0][1].plot(t_u,   u_vals, **kw_jfb)
-            axs[1][0].plot(t_jfb, S_jfb, **kw_jfb)
-            axs[1][1].plot(t_jfb, X_jfb, **kw_jfb)
-
-            if self._gamma2_available:
+        if self._gamma2_available:
+            for b in range(batch):
+                kw_ex = dict(color=c_ex, lw=lw, alpha=alpha_line, ls="--",
+                             label="Exact (BVP)" if b == 0 else None)
                 ex = exact_trajs[b]
                 axs[0][0].plot(ex.t, ex.z[:, 0], **kw_ex)
                 axs[0][1].plot(ex.t[:-1], ex.u[:, 0], **kw_ex)
@@ -249,23 +278,35 @@ class LiquidationBenchmark:
             for col in range(2):
                 _add_legend(axs[row][col])
 
-        # Panel [2,0]: terminal inventory bar chart
-        q_T_jfb = np.array([jfb.z[-1, 0] for jfb in jfb_trajs])
-        xs = np.arange(batch)
-        axs[2][0].bar(xs, q_T_jfb, color=c_jfb, alpha=0.7, label="JFB  q(T)")
+        # Panel [2,0]: terminal inventory bar chart -- one cluster per
+        # trajectory index, one bar per policy (+ exact if available).
+        n_groups = batch
+        n_series = len(rollouts) + (1 if self._gamma2_available else 0)
+        bar_w = 0.8 / max(n_series, 1)
+        xs = np.arange(n_groups)
+        for s, (label, color, trajs) in enumerate(rollouts):
+            q_T = np.array([tr.z[-1, 0] for tr in trajs])
+            offset = (s - (n_series - 1) / 2.0) * bar_w
+            axs[2][0].bar(xs + offset, q_T, bar_w, color=color, alpha=0.75,
+                          label=f"{label}  q(T)")
         if self._gamma2_available:
             q_T_exact = np.array([ex.z[-1, 0] for ex in exact_trajs])
-            axs[2][0].bar(xs + 0.4, q_T_exact, 0.4, color=c_ex, alpha=0.7,
+            offset = (len(rollouts) - (n_series - 1) / 2.0) * bar_w
+            axs[2][0].bar(xs + offset, q_T_exact, bar_w, color=c_ex, alpha=0.75,
                           label="Exact q(T)")
         axs[2][0].axhline(0, color="k", lw=0.8, ls="--")
         _label_ax(axs[2][0], "Terminal Inventory  q(T)", "Trajectory index", "q(T)")
         _add_legend(axs[2][0])
 
-        # Panel [2,1]: u*(0) vs q0 linearity check
+        # Panel [2,1]: u*(0) vs q0 linearity check.  One marker shape per
+        # policy so overlap remains readable; exact is the triangular one.
         q0_vals = z0[:, 0].cpu().numpy()
-        u0_jfb = np.array([jfb.u[0, 0] for jfb in jfb_trajs])
-        axs[2][1].scatter(q0_vals, u0_jfb, color=c_jfb, s=60, zorder=3,
-                          label="JFB  u*(0)")
+        marker_cycle = ("o", "s", "D", "P", "X")
+        for s, (label, color, trajs) in enumerate(rollouts):
+            u0 = np.array([tr.u[0, 0] for tr in trajs])
+            axs[2][1].scatter(q0_vals, u0, color=color, s=60, zorder=3,
+                              marker=marker_cycle[s % len(marker_cycle)],
+                              label=f"{label}  u*(0)")
         if self._gamma2_available:
             u0_exact = np.array([ex.u[0, 0] for ex in exact_trajs])
             axs[2][1].scatter(q0_vals, u0_exact, color=c_ex, s=60, marker="^",
@@ -279,11 +320,15 @@ class LiquidationBenchmark:
                   "Initial inventory  q₀", "u*(0)")
         _add_legend(axs[2][1])
 
-        _title = title or (
-            f"LiquidationPortfolio — JFB vs Exact BVP  "
-            f"(γ={self.gamma:.1f}, η={self.eta}, κ={self.kappa:.0e})"
-        )
-        fig.suptitle(_title, fontsize=13, fontweight="bold", y=0.995)
+        if title is None:
+            policy_str = (
+                "JFB" if len(rollouts) == 1 else " vs ".join(lbl for lbl, _, _ in rollouts)
+            )
+            title = (
+                f"LiquidationPortfolio — {policy_str} vs Exact BVP  "
+                f"(γ={self.gamma:.1f}, η={self.eta}, κ={self.kappa:.0e})"
+            )
+        fig.suptitle(title, fontsize=13, fontweight="bold", y=0.995)
 
         if save_path:
             fig.savefig(save_path, bbox_inches="tight", dpi=150)

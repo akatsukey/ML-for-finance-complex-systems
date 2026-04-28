@@ -27,6 +27,12 @@ from .plotter import (
 )
 from . import metrics
 from . import gradient_checks
+from .diagnostics import (
+    diagnostic_rollout,
+    diagnostic_panels,
+    attach_bvp_costate_to_meta,
+    liquidation_costate_vs_bvp_panels,
+)
 
 __all__ = [
     "Trajectory",
@@ -40,4 +46,8 @@ __all__ = [
     "benchmark_png_path",
     "metrics",
     "gradient_checks",
+    "diagnostic_rollout",
+    "diagnostic_panels",
+    "attach_bvp_costate_to_meta",
+    "liquidation_costate_vs_bvp_panels",
 ]

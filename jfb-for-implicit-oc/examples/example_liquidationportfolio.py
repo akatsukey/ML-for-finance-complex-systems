@@ -90,7 +90,11 @@ def run_liquidation_jfb(
     phi = Phi(3, 50, lp.state_dim, dev=device)
     inn = ImplicitNetOC(
         lp.state_dim, lp.control_dim,
-        alpha=1e-3, max_iters=200, tol=1e-4,
+        # Anderson-accelerated FP solver: large step + small cap is fine
+        # because AA adapts; lower tol than the legacy 1e-4 means we
+        # actually converge to a real fixed point of T at inference.
+        alpha=1.0, max_iters=50, tol=1e-6,
+        use_aa=True, beta=0.5,
         p_net=phi, oc_problem=lp,
         u_min=0, u_max=10, use_control_limits=True,
         dev=device,

@@ -245,6 +245,9 @@ class ImplicitNetOC(nn.Module, ABC):
         self.last_max_res_norm = 0.0
         self.last_converged = True
         self.track_convergence = True
+        # Per-call residual trace populated by ``forward()`` when
+        # ``record_trace=True``. List of floats, one per inner iter.
+        self.last_residual_trace: list[float] = []
 
         # Anderson Acceleration
         self.use_anderson = use_aa
@@ -290,15 +293,19 @@ class ImplicitNetOC(nn.Module, ABC):
             return torch.clamp(u, self.u_min, self.u_max)
         return u
     
-    def forward(self, x, t, verbose=False, max_res_out = False, track_all_fp_iters=False):
+    def forward(self, x, t, verbose=False, max_res_out = False, track_all_fp_iters=False,
+                record_trace: bool = False):
         """
         Forward pass of the implicit network.
-        
+
         Args:
             x (torch.Tensor): State tensor.
             t (torch.Tensor): Time tensor.
             verbose (bool): Whether to print convergence information.
-            
+            record_trace (bool): If ``True``, the per-iteration residual
+                norms of the inner fixed-point solver are recorded into
+                ``self.last_residual_trace`` (one float per iter). The
+                trace is reset at the beginning of every call.
         Returns:
             torch.Tensor: Optimal control.
         """
@@ -310,6 +317,8 @@ class ImplicitNetOC(nn.Module, ABC):
         converged = False
         max_res_norm = float('inf')
         n_max_iters = 0
+        if record_trace:
+            self.last_residual_trace = []
 
         # Determine if we should run the fixed-point iteration with or without gradients
         def find_fixed_point():
@@ -327,6 +336,11 @@ class ImplicitNetOC(nn.Module, ABC):
                     
                     # Compute maximum residual norm over batches
                     max_res_norm = (torch.norm(u - u_old, dim=1).max())/self.alpha
+
+                    if record_trace:
+                        self.last_residual_trace.append(
+                            max_res_norm.item() if torch.is_tensor(max_res_norm) else float(max_res_norm)
+                        )
 
                     if verbose:
                         print(f'iter {i+1}, max res norm {max_res_norm:.5e}')
@@ -346,7 +360,11 @@ class ImplicitNetOC(nn.Module, ABC):
                 if verbose and not converged:
                     print(f'did not converge in {self.max_iters} iterations with res norm {max_res_norm:.5e}')
             else:
-                u, max_res_norm, num_itr = self.anderson_direct(u, x, t, self.tol, self.max_iters, m=10, beta=self.beta)
+                _trace = self.last_residual_trace if record_trace else None
+                u, max_res_norm, num_itr = self.anderson_direct(
+                    u, x, t, self.tol, self.max_iters,
+                    m=10, beta=self.beta, trace=_trace,
+                )
                 #u, max_res_norm, num_itr = self.anderson_qr(u, x, t, self.tol, self.max_iters, m=20)
                 assert u.shape == (batch_size, self.control_dim)
 
@@ -397,14 +415,21 @@ class ImplicitNetOC(nn.Module, ABC):
         self.track_convergence = track
 
     def get_convergence_stats(self):
-        """Get the latest convergence statistics."""
+        """Get the latest convergence statistics.
+
+        ``residual_trace`` is populated only when ``forward(..., record_trace=True)``
+        is called; it lists the per-inner-iteration residual norms of the
+        most recent forward pass. Empty otherwise.
+        """
         return {
             'fp_depth': self.last_fp_depth,
             'max_res_norm': self.last_max_res_norm,
-            'converged': self.last_converged
+            'converged': self.last_converged,
+            'residual_trace': list(self.last_residual_trace),
         }
     
-    def anderson_direct(self, u0, x, t, tol=1.0e-3, max_iters=100, m=5, beta=0.5, lam=1.0e-6):
+    def anderson_direct(self, u0, x, t, tol=1.0e-3, max_iters=100, m=5, beta=0.5, lam=1.0e-4,
+                        trace: list | None = None):
         """
         Fixed-Point Iteration with Anderson acceleration 
 
@@ -417,6 +442,9 @@ class ImplicitNetOC(nn.Module, ABC):
                optimization problem
             beta (float): Parameter in Anderson acceleration iteration, must be > 0
             lam (float): Regularization parameter
+            trace (list, optional): If provided, the per-iteration residual
+                ``res_k/self.alpha`` is appended after every step. Used for
+                inner-FP convergence diagnostics.
 
         Return:
             Fixed point of T_eval, last residual, and number of iterations
@@ -437,6 +465,8 @@ class ImplicitNetOC(nn.Module, ABC):
         k = 1
         #res_k = ((T_hist[:,k%m] - u_hist[:,(k%m]).norm().item()) / (1.0e-9 + T_hist[:,k%m].norm().item())
         res_k = torch.norm(T_hist[:,k%m] - u_hist[:,k%m], dim=1).max().item()
+        if trace is not None:
+            trace.append(res_k / self.alpha)
         k += 1
         while ((res_k/self.alpha) > tol and k < max_iters):
             M = min(k,m)
@@ -447,15 +477,16 @@ class ImplicitNetOC(nn.Module, ABC):
             alpha = None
             try:
                 alpha = torch.linalg.solve(H[:,:(M+1),:(M+1)], Batch_RHS[:,:(M+1)])[:,1:(M+1),0]#Result is batch_sz x n
-            except RuntimeError:#If matrix is singular solve using Householder QR least squares
-                print("Least-Squares Solve")
-                alpha = torch.linalg.lstsq(H[:,:(M+1),:(M+1)], Batch_RHS[:,:(M+1)])[0][:,1:(M+1)]
+            except RuntimeError:  # H singular: fall back to least-squares (silent; rare).
+                alpha = torch.linalg.lstsq(H[:,:(M+1),:(M+1)], Batch_RHS[:,:(M+1)])[0][:,1:(M+1),0]
 
             #Update data structures
             u_hist[:,k%m] = (1.0-beta)*((alpha[:,None]@u_hist[:,:M])[:,0]) + beta*((alpha[:,None]@T_hist[:,:M])[:,0])
             T_hist[:,k%m] = self.T(u_hist[:,k%m].view_as(u0), x, t).view(batch_sz, -1)
             #res_k = ((T_hist[:,k%m] - u_hist[:,k%m]).norm().item()) / (1.0e-9 + T_hist[:,k%m].norm().item())
             res_k = torch.norm(T_hist[:,k%m] - u_hist[:,k%m], dim=1).max().item()
+            if trace is not None:
+                trace.append(res_k / self.alpha)
             k += 1
 
         return u_hist[:,k%m].view_as(u0), res_k/self.alpha, k

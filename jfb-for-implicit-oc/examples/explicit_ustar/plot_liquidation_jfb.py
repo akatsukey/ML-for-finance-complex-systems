@@ -53,6 +53,14 @@ from LiquidationPortfolio import LiquidationPortfolioOC
 from OptimalControlTrainer import OptimalControlTrainer
 from liquidation_benchmark import LiquidationBenchmark, benchmark_png_path
 from core.paths import results_dir
+from benchmarking import (
+    BenchmarkPlotter,
+    diagnostic_rollout,
+    diagnostic_panels,
+    attach_bvp_costate_to_meta,
+    liquidation_costate_vs_bvp_panels,
+)
+from benchmarking.solvers import AlmgrenChrissBVPSolver
 
 
 def parse_args() -> argparse.Namespace:
@@ -92,6 +100,76 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Skip RNG seeding entirely (every run gets a fresh init).",
     )
+    # ------------------------------------------------------------------ #
+    # Inner fixed-point solver knobs (ImplicitNetOC).                    #
+    # ------------------------------------------------------------------ #
+    p.add_argument(
+        "--fp-alpha", type=float, default=1.0,
+        help="Inner fixed-point step size (gradient descent on H). Newton "
+             "step for liquidation γ=2 is 1/(2η). Default 1.0 is robust "
+             "with Anderson acceleration; drop to 1e-2 if AA is off.",
+    )
+    p.add_argument(
+        "--fp-max-iters", type=int, default=50,
+        help="Inner fixed-point iteration cap (default 50, used heavily by AA).",
+    )
+    p.add_argument(
+        "--fp-tol", type=float, default=1e-6,
+        help="Inner fixed-point residual tolerance (default 1e-6).",
+    )
+    p.add_argument(
+        "--use-aa", dest="use_aa", action="store_true", default=True,
+        help="Enable Anderson acceleration on the inner FP solver (default ON).",
+    )
+    p.add_argument(
+        "--no-aa", dest="use_aa", action="store_false",
+        help="Disable Anderson acceleration; fall back to plain gradient-descent FP.",
+    )
+    p.add_argument(
+        "--aa-beta", type=float, default=0.5,
+        help="Anderson damping coefficient β (default 0.5).",
+    )
+    p.add_argument(
+        "--diagnostics", dest="diagnostics", action="store_true", default=True,
+        help="Also write the inner-FP / costate diagnostic figure "
+             "(default ON). Uses benchmarking.diagnostic_panels.",
+    )
+    p.add_argument(
+        "--no-diagnostics", dest="diagnostics", action="store_false",
+        help="Skip the diagnostic figure.",
+    )
+    # ------------------------------------------------------------------ #
+    # Control-bound knobs.                                               #
+    # The original script clamped u to [0, 10]. The lower bound u_min=0  #
+    # was the dominant failure mode in earlier runs: with the BC         #
+    # p_q(T) = 2 alpha q(T) > 0 the unclamped optimum u* often goes      #
+    # negative, the clamp pegs it at 0, and the policy gets no gradient. #
+    # Default is now NO clamp; turn it back on with --clamp-u.           #
+    # ------------------------------------------------------------------ #
+    p.add_argument(
+        "--clamp-u", dest="clamp_u", action="store_true", default=False,
+        help="Hard-clamp the policy output to [u_min, u_max]. Off by default; "
+             "the lower bound was the main collapse mechanism in prior runs.",
+    )
+    p.add_argument("--u-min", type=float, default=-1.0e6,
+                   help="Lower bound when --clamp-u is set (default effectively -inf).")
+    p.add_argument("--u-max", type=float, default=1.0e6,
+                   help="Upper bound when --clamp-u is set (default effectively +inf).")
+    # ------------------------------------------------------------------ #
+    # Optimality-condition loss weights (pass-through to ImplicitOC).    #
+    # alphaHJB = [running, terminal]   penalty on the HJB residual.      #
+    # alphaadj = [running, terminal]   penalty on the adjoint residual.  #
+    # Default 0 keeps the legacy "loss-only" objective; set them > 0 to  #
+    # actually train p_theta to satisfy PMP.                             #
+    # ------------------------------------------------------------------ #
+    p.add_argument("--alpha-hjb-run", type=float, default=0.0,
+                   help="Running-time HJB residual weight (default 0).")
+    p.add_argument("--alpha-hjb-fin", type=float, default=0.0,
+                   help="Terminal HJB residual weight (default 0).")
+    p.add_argument("--alpha-adj-run", type=float, default=0.0,
+                   help="Running-time adjoint residual weight (default 0).")
+    p.add_argument("--alpha-adj-fin", type=float, default=0.0,
+                   help="Terminal adjoint residual weight (default 0).")
     # Problem parameters (must match training when using --checkpoint)
     p.add_argument("--t-final", type=float, default=2.0)
     p.add_argument("--nt", type=int, default=100)
@@ -125,22 +203,34 @@ def build_problem(args: argparse.Namespace, device: str) -> LiquidationPortfolio
         S0=args.S0,
         X0=args.X0,
         device=device,
+        alphaHJB=(args.alpha_hjb_run, args.alpha_hjb_fin),
+        alphaadj=(args.alpha_adj_run, args.alpha_adj_fin),
     )
 
 
-def build_policy(prob: LiquidationPortfolioOC, device: str) -> ImplicitNetOC:
+def build_policy(prob: LiquidationPortfolioOC, device: str,
+                 fp_alpha: float = 1.0,
+                 fp_max_iters: int = 50,
+                 fp_tol: float = 1e-6,
+                 use_aa: bool = True,
+                 aa_beta: float = 0.5,
+                 clamp_u: bool = False,
+                 u_min: float = -1.0e6,
+                 u_max: float = 1.0e6) -> ImplicitNetOC:
     phi = Phi(3, 50, prob.state_dim, dev=device)
     return ImplicitNetOC(
         prob.state_dim,
         prob.control_dim,
-        alpha=1e-3,
-        max_iters=200,
-        tol=1e-4,
+        alpha=fp_alpha,
+        max_iters=fp_max_iters,
+        tol=fp_tol,
         p_net=phi,
         oc_problem=prob,
-        u_min=0.0,
-        u_max=10.0,
-        use_control_limits=True,
+        u_min=u_min,
+        u_max=u_max,
+        use_control_limits=clamp_u,
+        use_aa=use_aa,
+        beta=aa_beta,
         dev=device,
     ).to(device)
 
@@ -157,7 +247,32 @@ def main() -> None:
         print(f"Seeded torch and numpy with seed={args.seed}.")
 
     prob = build_problem(args, device)
-    inn = build_policy(prob, device)
+    inn = build_policy(
+        prob, device,
+        fp_alpha=args.fp_alpha,
+        fp_max_iters=args.fp_max_iters,
+        fp_tol=args.fp_tol,
+        use_aa=args.use_aa,
+        aa_beta=args.aa_beta,
+        clamp_u=args.clamp_u,
+        u_min=args.u_min,
+        u_max=args.u_max,
+    )
+    print(
+        "Inner FP solver: "
+        f"alpha={args.fp_alpha:.3g}  max_iters={args.fp_max_iters}  "
+        f"tol={args.fp_tol:.1e}  "
+        + (f"Anderson(beta={args.aa_beta:.2f})" if args.use_aa else "no Anderson")
+    )
+    if args.clamp_u:
+        print(f"Control clamp: u in [{args.u_min:g}, {args.u_max:g}]")
+    else:
+        print("Control clamp: OFF (unbounded u)")
+    print(
+        "Loss weights: "
+        f"alphaHJB=({args.alpha_hjb_run:g}, {args.alpha_hjb_fin:g})  "
+        f"alphaadj=({args.alpha_adj_run:g}, {args.alpha_adj_fin:g})"
+    )
 
     if args.checkpoint:
         ckpt = os.path.abspath(args.checkpoint)
@@ -200,6 +315,44 @@ def main() -> None:
     )
     bench.plot_comparison(inn, z0_plot, save_path=out, n_show=args.n_show)
     print(f"Figure written to: {os.path.abspath(out)}")
+
+    if args.diagnostics:
+        # Single z0 for the diagnostic rollout: pick the first sample from
+        # the same batch we just plotted, so the diagnostic curves correspond
+        # to a trajectory visible in the comparison figure.
+        z0_diag = z0_plot[0].detach().cpu().numpy().reshape(-1)
+        diag_traj = diagnostic_rollout(
+            prob, inn,
+            torch.as_tensor(z0_diag, dtype=torch.float32, device=prob.device),
+            label="JFB",
+            record_trace_at_t0=True,
+        )
+        # Optional: overlay learned vs exact-BVP costates (γ=2 only).
+        traj_for_plot = diag_traj
+        extra_panels = []
+        if abs(float(prob.gamma) - 2.0) < 1e-6:
+            try:
+                traj_for_plot = attach_bvp_costate_to_meta(
+                    diag_traj, prob, np.asarray(z0_diag),
+                )
+                extra_panels = liquidation_costate_vs_bvp_panels()
+            except Exception as exc:
+                print(f"  [warn] BVP costate overlay skipped: {exc}")
+
+        diag_panels = diagnostic_panels(state_components=(0, 1)) + extra_panels
+        diag_out = os.path.join(
+            results_dir(type(prob).__name__, "benchmark"),
+            f"jfb_diagnostics_{args.tag}.png",
+        )
+        BenchmarkPlotter(diag_panels, ncols=2).plot(
+            [traj_for_plot], save_path=diag_out,
+            title=(
+                f"JFB diagnostics — α_fp={args.fp_alpha:.2g}, "
+                f"max_iters={args.fp_max_iters}, tol={args.fp_tol:.0e}, "
+                f"AA={'on' if args.use_aa else 'off'}"
+            ),
+        )
+        print(f"Diagnostics figure written to: {os.path.abspath(diag_out)}")
 
 
 if __name__ == "__main__":

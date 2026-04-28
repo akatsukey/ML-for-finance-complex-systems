@@ -41,6 +41,7 @@ from ImplicitNets import ImplicitNetOC
 # from ImplicitNets import ImplicitNetOC_pos as ImplicitNetOC
 from core.paths import results_dir
 from core.run_io import RunIO
+from core.log_format import EpochColourizer
 from benchmarking import BenchmarkPlotter
 
 
@@ -279,10 +280,18 @@ class OptimalControlTrainer:
         print(f"Starting training in '{self.mode}' mode for {num_epochs} epochs.")
         print(f"  run_id      : {self.run_io.run_id}")
         print(f"  output root : {self.run_io.train_dir}")
+        if verbose:
+            print("-" * 60)
+            print(EpochColourizer.legend(
+                fp_max_iters=getattr(self.policy, "max_iters", 0),
+                fp_tol=getattr(self.policy, "tol", 1e-4),
+                fp_alpha=getattr(self.policy, "alpha", 1e-3),
+            ))
         print("-" * 60)
         best_loss = float('inf')
 
         process = psutil.Process(os.getpid())
+        colour = EpochColourizer(history_window=10)
         for epoch in range(1, num_epochs + 1):
             gpu_memory_MB = 0.0
             gpu_max_memory_MB = 0.0
@@ -319,15 +328,43 @@ class OptimalControlTrainer:
                 else:
                     self.history[key].append(locals().get(key, step_info.get(key, 0)))
 
-            # === CHANGE: Updated print statement to show HJB/ADJ costs and memory ===
+            # === Colourised per-epoch log ===
+            # Each numeric field is wrapped in an ANSI escape determined
+            # by `EpochColourizer`. Rolling-history rules use the values
+            # *before* the current epoch is appended -- update_history()
+            # is called at the very end so the current epoch is judged
+            # against the previous K epochs.
             if verbose:
-                _RED, _RESET = "\033[1;31m", "\033[0m"
-                print(f"{_RED}Epoch {epoch:03d}{_RESET} | Loss: {step_info['loss']:.3e} | L: {step_info['running_cost']:.3e} | G: {step_info['terminal_cost']:.3e} | "
-                      f"HJB: {step_info.get('cHJB', 0):.3e} | HJB fin: {step_info.get('cHJBfin',0):.3e} |Adj: {step_info.get('cadj', 0):.2e} | "
-                      f"Grad: {grad_norm:.2e} | Time: {time_per_epoch:.2f}s | "
-                      f"CPU Mem: {memory_MB:.1f}MB | Max CPU: {max_memory_MB:.1f}MB | "
-                      f"GPU Mem: {gpu_memory_MB:.1f}MB | Max GPU: {gpu_max_memory_MB:.1f}MB | lr: {step_info['lr']:.3e} | "
-                      f"max_fp_itrs: {step_info['max_fp_itrs']} | res_norm: {step_info['max_fp_res_norm']:.3e} | max_grad_H: {step_info['max_grad_H']:.3e} | avg_grad_H: {step_info['avg_grad_H']:.3e}\n")
+                fp_cap = getattr(self.policy, "max_iters", 0)
+                fp_tol = getattr(self.policy, "tol", 1e-4)
+                fp_alpha = getattr(self.policy, "alpha", 1e-3)
+                line = (
+                    f"{colour.epoch(epoch)} | "
+                    f"Loss: {colour.loss(step_info['loss'])} | "
+                    f"L: {step_info['running_cost']:.3e} | "
+                    f"G: {step_info['terminal_cost']:.3e} | "
+                    f"HJB: {colour.cHJB(step_info.get('cHJB', 0.0))} | "
+                    f"HJB fin: {step_info.get('cHJBfin', 0.0):.3e} | "
+                    f"Adj: {colour.cadj(step_info.get('cadj', 0.0))} | "
+                    f"Grad: {colour.grad_norm(grad_norm)} | "
+                    f"Time: {colour.time(time_per_epoch)}s | "
+                    f"CPU Mem: {memory_MB:.1f}MB | Max CPU: {max_memory_MB:.1f}MB | "
+                    f"GPU Mem: {gpu_memory_MB:.1f}MB | Max GPU: {gpu_max_memory_MB:.1f}MB | "
+                    f"lr: {colour.lr(step_info['lr'])} | "
+                    f"max_fp_itrs: {colour.fp_itrs(step_info['max_fp_itrs'], fp_cap)} | "
+                    f"res_norm: {colour.res_norm(step_info['max_fp_res_norm'], fp_tol)} | "
+                    f"max_grad_H: {colour.max_grad_H(step_info['max_grad_H'], fp_alpha)} | "
+                    f"avg_grad_H: {step_info['avg_grad_H']:.3e}\n"
+                )
+                print(line)
+            colour.update_history(
+                loss=step_info['loss'],
+                grad_norm=grad_norm,
+                time_per_epoch=time_per_epoch,
+                lr=step_info['lr'],
+                cadj=step_info.get('cadj', None),
+                cHJB=step_info.get('cHJB', None),
+            )
 
             if step_info['loss'] < best_loss:
                 best_loss = step_info['loss']

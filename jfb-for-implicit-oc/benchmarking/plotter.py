@@ -304,3 +304,45 @@ def almgren_chriss_panels() -> List[Panel]:
         Panel("Impacted Price  S(t)", _state_extractor(1),   "S(t)"),
         Panel("Accumulated Cash  X(t)", _state_extractor(2), "X(t)"),
     ]
+
+
+def liquidation_panels(n_assets: int) -> List[Panel]:
+    """Multi-asset Almgren-Chriss liquidation panel layout.
+
+    State layout assumed to be ``[q_1, ..., q_n, S_1, ..., S_n, X]``
+    (size ``2*n_assets + 1``); control layout ``[u_1, ..., u_n]``.
+
+    For ``n_assets == 1`` the result is identical to
+    :func:`almgren_chriss_panels` (modulo a stable subscript in titles).
+    For ``n_assets > 1`` we emit one ``q_i / u_i / S_i`` triplet per asset
+    and a single shared ``X(t)`` panel at the end. The intended grid is
+    ``ncols=3``: each row holds the three panels for one asset, and the
+    last row contains only the ``X(t)`` panel.
+    """
+    if n_assets <= 0:
+        raise ValueError(f"n_assets must be positive, got {n_assets}")
+
+    panels: List[Panel] = []
+    for i in range(n_assets):
+        suffix = f"_{i + 1}" if n_assets > 1 else ""
+        panels.append(Panel(
+            f"Inventory  q{suffix}(t)",
+            _state_extractor(i),
+            f"q{suffix}(t)",
+        ))
+        panels.append(Panel(
+            f"Trading Rate  u*{suffix}(t)",
+            _control_extractor(i),
+            f"u*{suffix}(t)",
+        ))
+        panels.append(Panel(
+            f"Impacted Price  S{suffix}(t)",
+            _state_extractor(n_assets + i),
+            f"S{suffix}(t)",
+        ))
+    panels.append(Panel(
+        "Accumulated Cash  X(t)",
+        _state_extractor(2 * n_assets),
+        "X(t)",
+    ))
+    return panels

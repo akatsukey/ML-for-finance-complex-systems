@@ -24,6 +24,7 @@ from .plotter import (
     Panel,
     BenchmarkPlotter,
     almgren_chriss_panels,
+    liquidation_panels,
 )
 from . import metrics
 from . import gradient_checks
@@ -42,6 +43,7 @@ __all__ = [
     "BenchmarkPlotter",
     "Panel",
     "almgren_chriss_panels",
+    "liquidation_panels",
     "benchmark_png_dir",
     "benchmark_png_path",
     "metrics",

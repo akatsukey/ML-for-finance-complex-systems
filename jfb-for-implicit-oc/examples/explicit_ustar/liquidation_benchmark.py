@@ -134,10 +134,13 @@ class LiquidationBenchmark:
         self.n_bvp_nodes = n_bvp_nodes
         self.bvp_tol = bvp_tol
 
-        self.sigma = prob.sigma
-        self.kappa = prob.kappa
-        self.eta = prob.eta
-        self.gamma = prob.gamma
+        # ``prob.{sigma,kappa,eta}`` are length-n_assets tensors after the
+        # multi-asset refactor; ``LiquidationBenchmark`` is single-asset
+        # only (BVP solver hardcoded to state_dim=3), so coerce to scalars.
+        self.sigma = float(prob.sigma) if hasattr(prob.sigma, "__len__") or hasattr(prob.sigma, "numel") else prob.sigma
+        self.kappa = float(prob.kappa) if hasattr(prob.kappa, "__len__") or hasattr(prob.kappa, "numel") else prob.kappa
+        self.eta   = float(prob.eta)   if hasattr(prob.eta,   "__len__") or hasattr(prob.eta,   "numel") else prob.eta
+        self.gamma = float(prob.gamma)
         self.epsilon = prob.epsilon
         self.alpha = prob.alpha
         self.T = prob.t_final

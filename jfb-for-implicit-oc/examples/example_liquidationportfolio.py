@@ -35,7 +35,9 @@ for _p in (_ROOT, os.path.join(_ROOT, "core"), os.path.join(_ROOT, "models")):
 
 from LiquidationPortfolio  import LiquidationPortfolioOC   # models/
 from ImplicitNets          import Phi, ImplicitNetOC       # core/
-from OptimalControlTrainer import OptimalControlTrainer    # core/
+from OptimalControlTrainer import OptimalControlTrainer    # core/*
+from utils import GradientTester
+
 
 
 # Pinned experiment configuration matching the CLI invocation
@@ -75,9 +77,17 @@ def run_liquidation_jfb(
     print()
 
     lp = LiquidationPortfolioOC(
-        batch_size=64, t_initial=0.0, t_final=10.0, nt=100,
-        sigma=0.02, kappa=1e-3, eta=0.1, gamma=2, epsilon=1e-3,
-        alpha=20, q0_min=3.0, q0_max=5.0, S0=5.0, X0=0.0,
+        batch_size=64, t_initial=0.0, t_final=10.0, nt=100,n_assets=2,
+        sigma=(0.02, 0.04),
+        kappa=(1e-4, 1e-3),
+        eta=(0.1, 0.3),
+        gamma=2,
+        epsilon=1e-2,
+        alpha=30,
+        q0_min=(1, 1.5),
+        q0_max=(1.5, 2),
+        S0=(1.0, 1.5),
+        X0=0.0,
         device=device,
         # HJB / adjoint consistency-loss weights. Default = 0, i.e. the JFB
         # objective is only running cost + terminal cost. Bump to e.g.
@@ -93,10 +103,10 @@ def run_liquidation_jfb(
         # Anderson-accelerated FP solver: large step + small cap is fine
         # because AA adapts; lower tol than the legacy 1e-4 means we
         # actually converge to a real fixed point of T at inference.
-        alpha=1.0, max_iters=50, tol=1e-6,
-        use_aa=True, beta=0.5,
+        alpha=0.01, max_iters=200, tol=1e-4,
+        use_aa=False, beta=0.0,
         p_net=phi, oc_problem=lp,
-        u_min=0, u_max=10, use_control_limits=True,
+        u_min=0, u_max=10, use_control_limits=False,
         dev=device,
     ).to(device)
 
@@ -122,8 +132,10 @@ def main():
     torch.manual_seed(seed)
     np.random.seed(seed)
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    run_liquidation_jfb(full_AD=False, epochs=50, lr=1e-3,
+    run_liquidation_jfb(full_AD=False, epochs=30, lr=1e-3,
                         plot_frequency=10, device=device)
+    
+    
 
 
 if __name__ == "__main__":

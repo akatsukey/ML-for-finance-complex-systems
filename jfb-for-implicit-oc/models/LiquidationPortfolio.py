@@ -10,7 +10,6 @@ from utils import GradientTester
 from benchmarking import Trajectory
 from benchmarking.plotter import Panel, almgren_chriss_panels
 
-
 class LiquidationPortfolioOC(ImplicitOC):
     """
     Single-asset liquidation as a finite-horizon optimal control problem.
@@ -38,15 +37,16 @@ class LiquidationPortfolioOC(ImplicitOC):
         t_initial=0.0,
         t_final=2.0,
         nt=100,
-        sigma=0.02,
-        kappa=1.0e-4,
-        eta=0.1,
+        n_assets=2,
+        sigma=(0.02, 0.02),
+        kappa=(1.0e-4, 1.0e-4),
+        eta=(0.1, 0.1),
         gamma=2.0,
         epsilon=1.0e-2,
         alpha=30,
-        q0_min=0.5,
-        q0_max=1.5,
-        S0=1.0,
+        q0_min=(0.5, 0.5),
+        q0_max=(1.5, 1.5),
+        S0=(1.0, 1.0),
         X0=0.0,
         device="cpu",
         alphaHJB=(0.0, 0.0),
@@ -54,8 +54,8 @@ class LiquidationPortfolioOC(ImplicitOC):
     ):
         # State layout: q = remaining inventory, S = impacted price, X = accumulated cash.
         # Control: u = selling rate (aligned with dq/dt = -u).
-        state_dim = 3  # (q, S, X)
-        control_dim = 1  # u
+        state_dim = 2 * n_assets + 1  # (q1, q2,..., S1, S2,..., X) 
+        control_dim = n_assets  # (u1, u2, ...)
         # Time discretization and batch: horizon [t_initial, t_final], nt steps, parallel trajectories.
         super().__init__(
             state_dim,
@@ -72,22 +72,50 @@ class LiquidationPortfolioOC(ImplicitOC):
         )
         self.oc_problem_name = "Liquidation Portfolio"
 
+        self.n_assets = n_assets
+
         # Terminal-impact smoothing in (u^2 + epsilon)^(gamma/2); also used in dX/dt.
         self.epsilon = epsilon
 
-        # Market model: inventory risk scale sigma; linear price impact kappa; nonlinear cash friction eta, gamma.
-        self.sigma = sigma
-        self.kappa = kappa
-        self.eta = eta
+        
+
+        # function to convert scalar or vector parameters into asset-aligned vectors of shape (n_assets,) on the correct device
+        def _to_asset_vector(x, n_assets, device, name):
+            x_t = torch.as_tensor(x, dtype=torch.float32, device=device)
+            if x_t.ndim == 0:
+                x_t = x_t.repeat(n_assets)
+            elif x_t.ndim == 1 and x_t.numel() == n_assets:
+                pass
+            else:
+                raise ValueError(f"{name} must be a scalar or a vector of length {n_assets}")
+            return x_t
+
+        
+        
+        # # Market model: inventory risk scale sigma; linear price impact kappa; nonlinear cash friction eta, gamma.
+        # self.sigma = sigma
+        # self.kappa = kappa
+        # self.eta = eta
         self.gamma = gamma
+        self.sigma = _to_asset_vector(sigma, n_assets, device, "sigma")
+        self.kappa = _to_asset_vector(kappa, n_assets, device, "kappa")
+        self.eta = _to_asset_vector(eta, n_assets, device, "eta")
+
+
         # Terminal penalty weight on leftover inventory (with -X term in G).
         self.alpha = alpha
 
+
+
         # Initial-condition distribution / levels for sampling z0 at episode start.
-        self.q0_min = q0_min
-        self.q0_max = q0_max
-        self.S0 = S0
+        # self.q0_min = q0_min
+        # self.q0_max = q0_max
+        # self.S0 = S0
+        self.q0_min = _to_asset_vector(q0_min, n_assets, device, "q0_min")
+        self.q0_max = _to_asset_vector(q0_max, n_assets, device, "q0_max")
+        self.S0 = _to_asset_vector(S0, n_assets, device, "S0")
         self.X0 = X0
+
 
     def compute_lagrangian(
         self, t: TimeLike, z: torch.Tensor, u: torch.Tensor
@@ -118,9 +146,9 @@ class LiquidationPortfolioOC(ImplicitOC):
         else:
             squeeze = False
 
-        q = z[:, 0]  # inventory, shape (batch,)
+        q = z[:, :self.n_assets]  # inventory, shape (batch, n_assets)
         # Carrying inventory is risky; larger sigma amplifies the quadratic penalty on q.
-        lag = 0.5 * (self.sigma**2) * (q**2)  # shape (batch,)
+        lag = 0.5 * torch.sum((self.sigma**2) * (q**2), dim=1)  # shape (batch,n_assets)
         return lag[0] if squeeze else lag
 
     def compute_grad_lagrangian(
@@ -182,15 +210,17 @@ class LiquidationPortfolioOC(ImplicitOC):
             squeeze = False
 
         # Column slices (batch, 1): componentwise dynamics, concatenated into (batch, 3) below.
-        q = z[:, 0:1]
-        S = z[:, 1:2]
-        X = z[:, 2:3]
+        q = z[:, :self.n_assets]  # inventory (batch, n_assets)
+        S = z[:, self.n_assets:2*self.n_assets]  # impacted price (batch, n_assets)
+        X = z[:, 2*self.n_assets:2*self.n_assets+1]  # accumulated cash (batch, 1)
 
         dq = -u  # selling reduces remaining inventory q
         dS = -self.kappa * u  # linear permanent impact: selling depresses the mid / impacted price S
         # dX = S * u - self.eta * torch.abs(u).pow(self.gamma)
         # Cash: revenue S*u minus smoothed nonlinear impact/friction in the selling rate u.
-        dX = S * u - self.eta * (u.pow(2) + self.epsilon).pow(self.gamma / 2.0)
+        trading_cashflow = S * u
+        impact_cost = self.eta * (u.pow(2) + self.epsilon).pow(self.gamma / 2.0)
+        dX = torch.sum(trading_cashflow - impact_cost, dim=1, keepdim=True)  # (batch, 1)
 
         result = torch.cat((dq, dS, dX), dim=1)  # stack dq/dt, dS/dt, dX/dt into dz/dt
         return result[0] if squeeze else result
@@ -222,22 +252,17 @@ class LiquidationPortfolioOC(ImplicitOC):
 
         batch = z.shape[0]
         # One Jacobian "row" per control component × one column per state equation (q, S, X).
-        grad = torch.zeros(batch, 1, 3, device=z.device)
+        grad = torch.zeros(batch, self.control_dim,self.state_dim, device=z.device)
 
-        S = z[:, 1:2]
+        S = z[:,  self.n_assets:2*self.n_assets]
 
-        grad[:, 0, 0] = -1.0  # ∂(dq/dt)/∂u = ∂(-u)/∂u
-        grad[:, 0, 1] = -self.kappa  # ∂(dS/dt)/∂u
-        # grad[:, 0, 2] = (S-self.eta*self.gamma*torch.sign(u)*torch.abs(u).pow(self.gamma - 1)).squeeze(1)
-        impact_grad = (
-            self.eta
-            * self.gamma
-            * u
-            * (u.pow(2) + self.epsilon).pow(self.gamma / 2.0 - 1.0)
-        )  # derivative of eta*(u^2+eps)^(gamma/2) w.r.t. u (smooth impact term in dX/dt)
-        grad[:, 0, 2] = (S - impact_grad).squeeze(
-            1
-        )  # ∂(dX/dt)/∂u: marginal cash change per unit increase in selling rate
+        for i in range(self.n_assets):
+            grad[:, i, i] = -1.0                                                # ∂(dq_i/dt)/∂u_i = -1
+            grad[:, i, self.n_assets + i] = -self.kappa[i]                      # ∂(dS_i/dt)/∂u_i = -kappa_i
+
+
+        impact_grad = (self.eta * self.gamma* u* (u.pow(2) + self.epsilon).pow(self.gamma / 2.0 - 1.0))  # derivative of eta*(u^2+eps)^(gamma/2) w.r.t. u (smooth impact term in dX/dt)
+        grad[:, :, 2 * self.n_assets] = S - impact_grad # ∂(dX/dt)/∂u: marginal cash change per unit increase in selling rate
 
         return grad[0] if squeeze else grad
 
@@ -268,9 +293,9 @@ class LiquidationPortfolioOC(ImplicitOC):
 
         batch = z.shape[0]
         # Square Jacobian (batch, 3, 3): columns index ∂/∂q, ∂/∂S, ∂/∂X; rows index state equations.
-        grad = torch.zeros(batch, 3, 3, device=z.device)
+        grad = torch.zeros(batch, self.state_dim, self.state_dim, device=z.device)
 
-        grad[:, 2, 1] = u.squeeze(1)  # only dX/dt depends on S; ∂(S*u)/∂S = u
+        grad[:, 2 * self.n_assets, self.n_assets:2 * self.n_assets] = u  # only dX/dt depends on S; ∂(S*u)/∂S = u
 
         return grad[0] if squeeze else grad
 
@@ -294,9 +319,10 @@ class LiquidationPortfolioOC(ImplicitOC):
         else:
             squeeze = False
 
-        q = z[:, 0]  # terminal inventory
-        X = z[:, 2]  # terminal accumulated cash
-        G = -X + self.alpha * (q**2)  # cash reward vs. unfinished liquidation penalty
+        q = z[:, :self.n_assets]  # inventory (batch, n_assets)
+        X = z[:, 2*self.n_assets]  # accumulated cash (batch,)
+
+        G = -X + self.alpha * torch.sum(q ** 2, dim=1)  # cash reward vs. unfinished liquidation penalty
         return G[0] if squeeze else G
 
     def compute_grad_G_z(self, z: torch.Tensor) -> torch.Tensor:
@@ -319,11 +345,11 @@ class LiquidationPortfolioOC(ImplicitOC):
             squeeze = False
 
         batch = z.shape[0]
-        grad = torch.zeros(batch, 3, device=z.device)
+        grad = torch.zeros(batch, self.state_dim, device=z.device)
 
-        q = z[:, 0]
-        grad[:, 0] = 2.0 * self.alpha * q  # marginal cost of carrying one more unit of q at T
-        grad[:, 2] = -1.0  # marginal value of terminal cash: +1 to X decreases G by 1
+        q = z[:, :self.n_assets]
+        grad[:, :self.n_assets] = 2.0 * self.alpha * q  # marginal cost of carrying one more unit of q at T
+        grad[:, 2 * self.n_assets] = -1.0  # marginal value of terminal cash: +1 to X decreases G by 1
 
         return grad[0] if squeeze else grad
 
@@ -335,11 +361,9 @@ class LiquidationPortfolioOC(ImplicitOC):
         are fixed constants across the batch. The policy is therefore trained against
         a **family** of initial inventories, not a single deterministic ``z0``.
         """
-        q0 = self.q0_min + (self.q0_max - self.q0_min) * torch.rand(
-            self.batch_size, 1, device=self.device
-        )
+        q0 = self.q0_min.unsqueeze(0) + (self.q0_max - self.q0_min).unsqueeze(0) * torch.rand(self.batch_size, self.n_assets, device=self.device)
 
-        S0 = torch.full((self.batch_size, 1), self.S0, device=self.device)
+        S0 = self.S0.unsqueeze(0).expand(self.batch_size, -1)
         X0 = torch.full((self.batch_size, 1), self.X0, device=self.device)
         # Concatenate along feature dim → shape (batch, 3) == (batch, state_dim).
         return torch.cat((q0, S0, X0), dim=1).to(self.device)
@@ -559,20 +583,23 @@ if __name__ == "__main__":
     nt = 100
 
     prob = LiquidationPortfolioOC(
-        batch_size=batch_size,
+        batch_size=64,
         t_initial=0.0,
-        t_final=1.0,
-        nt=nt,
-        sigma=0.02,
-        kappa=1.0e-4,
-        eta=0.1,
-        gamma=0.5,
-        # gamma=2.0,
-        q0_min=0.5,
-        q0_max=1.5,
-        S0=1.0,
+        t_final=2.0,
+        nt=100,
+        n_assets=2,
+        sigma=(0.02, 0.02),
+        kappa=(1.0e-4, 1.0e-4),
+        eta=(0.1, 0.1),
+        gamma=2.0,
+        epsilon=1.0e-2,
+        alpha=30,
+        q0_min=(0.5, 0.5),
+        q0_max=(1.5, 1.5),
+        S0=(1.0, 1.0),
         X0=0.0,
-        device=device,
+        device="cpu",
+
     )
 
     # Example open-loop control trajectory for quick sanity checks (not used in GradientTester below).

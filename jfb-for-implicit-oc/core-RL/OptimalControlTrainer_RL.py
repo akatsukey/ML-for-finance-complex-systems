@@ -52,7 +52,7 @@ import torch
 import pandas as pd
 import psutil
 
-from OptimalControlTrainer import OptimalControlTrainer
+from core.OptimalControlTrainer import OptimalControlTrainer
 from core.log_format import EpochColourizer
 from benchmarking import BenchmarkPlotter
 

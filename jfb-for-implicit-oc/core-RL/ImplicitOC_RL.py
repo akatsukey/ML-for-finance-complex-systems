@@ -39,15 +39,14 @@ abstract  ``sample_initial_condition``      kept
 
 Sign / shape conventions
 ~~~~~~~~~~~~~~~~~~~~~~~~
-We follow the existing ``core/`` repo, *not* the PDF's notation:
+We follow the existing ``core/`` repo:
 
 * Hamiltonian (minimisation form):  ``H = L + ⟨p, f⟩``.
 * ``∇_u H = ∇_u L + b_k @ p`` where ``b_k`` has shape ``(B, m, n)`` with
   ``b_k[:, i, j] = ∂f_j / ∂u_i``  (so ``b_k @ p`` has shape ``(B, m)``).
 * Fixed-point step: ``T̂_k(u; z) = u - α ∇_u H``.
 
-With this convention, the JFB-with-estimates gradient (eqn. 23 of the
-Pontryagin-RL notes, written out for the discrete map ``F = z + Δt·f``) is
+With this convention, the JFB-with-estimates gradient is
 
     dĴ/dθ ≈ Σ_k (∂T̂_k / ∂θ)ᵀ · [ Δt · ∇_u L + b_k @ p_{k+1} · Δt ]
            = Σ_k (∂T̂_k / ∂θ)ᵀ · Δt · [ ∇_u L + b_k @ p_{k+1} ].

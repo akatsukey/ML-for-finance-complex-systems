@@ -41,7 +41,7 @@ from __future__ import annotations
 import torch
 
 # core/ is on sys.path; flat import works.
-from ImplicitNets import ImplicitNetOC
+from core.ImplicitNets import ImplicitNetOC
 
 
 class ImplicitNetOC_RL(ImplicitNetOC):

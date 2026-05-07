@@ -114,4 +114,7 @@ class ImplicitNetOC_RL(ImplicitNetOC):
         )
 
         # Sign convention identical to the parent: T(u) = u - α ∇_u H.
-        return u - self.alpha * grad_H_u
+        # Clamp inside the FP loop so iterates stay in [u_min, u_max]; without
+        # this, a large random p_net × non-zero b_k pushes the FP target
+        # outside the contractive region and the iteration diverges to NaN.
+        return self.apply_control_limits(u - self.alpha * grad_H_u)

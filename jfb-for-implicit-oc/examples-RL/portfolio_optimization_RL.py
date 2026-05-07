@@ -109,16 +109,17 @@ def run_portfolio_rl(
     prob = PortfolioOC_RL(
         mu_true=0.10,
         r_true=0.03,
-        lam=0.5,            # PDF: λ ≤ 1 keeps T contractive at α ∈ [0.01, 0.1]
-        W_ref=1.0,
+        lam=0.1,            # reduced from 0.5 so running-cost gradient no longer
+                            # dominates the terminal-cost signal in the bracket
+        W_ref=10,
         W0_min=0.8,
         W0_max=1.2,
         batch_size=32,
         t_initial=0.0,
-        t_final=1.0,
+        t_final=2.0,
         nt=50,
         alphaL=1.0,
-        alphaG=1.0,
+        alphaG=5.0,         # amplify terminal-cost weight in adjoint and bracket
         device=device,
     )
 
@@ -178,14 +179,14 @@ def run_portfolio_rl(
     # for ∇_z φ, once via autograd for ∂(surrogate)/∂θ).
     phi = Phi(3, 50, prob.state_dim, dev=device)
 
-    # Implicit policy. PDF §5.3 recommends α ∈ [0.01, 0.1] for FP step
-    # size. Control bounds keep π in a sensible range during early
-    # training, when the policy hasn't yet learnt to avoid extreme
-    # leverage.
+    # Implicit policy. With lam=0.1 and alphaL=1, the effective curvature
+    # of H w.r.t. u near π=0 is 2*αL*lam = 0.2. Setting alpha=0.25 gives
+    # FP contraction rate |1 - 0.25*0.2| = 0.95 — same as the original
+    # (lam=0.5, alpha=0.05) setting, so max_iters=300 is still sufficient.
     inn = ImplicitNetOC_RL(
         prob.state_dim, prob.control_dim,
-        alpha=0.05,
-        max_iters=100,
+        alpha=0.25,
+        max_iters=300,
         tol=1e-4,
         p_net=phi,
         oc_problem=prob,

@@ -62,8 +62,8 @@ from abc import ABC, abstractmethod
 
 import torch
 
-from Environment import Environment
-from JacobianEstimator import JacobianEstimator
+from core_RL.Environment import Environment
+from core_RL.JacobianEstimator import JacobianEstimator
 
 
 TimeLike = float | torch.Tensor
@@ -190,8 +190,8 @@ class ImplicitOC_RL(ABC):
         ``b_k`` injected from the outside instead of ``self.compute_grad_f_u(...)``.
         """
         B = z.shape[0]
-        # ∇_u L
-        grad_L = self.compute_grad_lagrangian(t, z, u)         # (B, m)
+        # αL · ∇_u L
+        grad_L = self.alphaL * self.compute_grad_lagrangian(t, z, u)   # (B, m)
         # b_k @ p — broadcast b_k if it's (1, m, n)
         if b_k.shape[0] == 1 and B > 1:
             b_k = b_k.expand(B, -1, -1)
@@ -207,18 +207,27 @@ class ImplicitOC_RL(ABC):
         env: Environment,
         jac_est: JacobianEstimator,
         z0: torch.Tensor,
+        exploration_std: float = 0.0,
     ) -> dict:
-        """End-to-end RL JFB loss computation.
+        """End-to-end RL JFB loss computation — two-rollout variant.
 
-        Pipeline (matches Algorithm 1 of the Pontryagin-RL notes):
+        When ``exploration_std > 0``, two rollouts are executed per epoch:
 
-        1. **Forward rollout in env**, collecting ``z̄_{0:N}``, ``ū_{0:N-1}``.
-           Inside the loop we (a) push the current ``b_k`` estimate into
-           the policy via ``policy.set_step_jacobian(b_k)``, (b) call the
-           policy to obtain ``ū_k``, (c) step the env, (d) update the
-           Jacobian estimator with the freshly observed transition. All
-           tensors collected here are detached — no autograd graph runs
-           through the env.
+        1a. **Exploration rollout** (no grad): noisy controls are sent to
+            ``env.step`` and ``jac_est.update`` so the RLS estimator sees
+            sufficient control variation to identify ``b_k = ∂f/∂u``.
+            This rollout is discarded after updating the estimator.
+
+        1b. **Clean rollout** (no grad): the policy is queried with its
+            own (noise-free) controls using the freshly updated ``b_k``
+            estimates. The resulting trajectory is internally consistent —
+            the same states and controls feed the cost reporting, the
+            backward adjoint pass, and the JFB surrogate. The logged
+            ``terminal_cost`` therefore reflects the policy's actual
+            performance rather than a noise-corrupted trajectory.
+
+        When ``exploration_std == 0`` a single rollout is run (original
+        behaviour; ``jac_est.update`` is called inside that rollout).
 
         2. **Backward adjoint pass** (no grad):
                p_N = ∇G(z_N)
@@ -226,34 +235,25 @@ class ImplicitOC_RL(ABC):
 
         3. **JFB surrogate construction**: a scalar ``S(θ)`` such that
            ``S(θ).backward()`` populates ``param.grad`` with the
-           JFB-with-estimates gradient. Specifically,
+           JFB-with-estimates gradient:
 
                S(θ) = Σ_k ⟨ T̂_k(ū_k; z̄_k),  Δt · (∇_u L + b_k @ p̂_{k+1}) ⟩
 
-           where ``ū_k``, the bracket, ``b_k``, ``p̂_{k+1}`` are all
-           detached, and ``T̂_k`` carries θ-dependence only through the
-           value-function gradient ``∇_z φ_θ`` it consumes inside ``∇_u H``.
-           Then  ``∂S/∂θ = Σ_k (∂T̂_k/∂θ)ᵀ · bracket_k``  by linearity,
-           which is exactly eqn. (23). This trick avoids ever having to
-           compute or store ``∂T̂/∂θ`` as a Jacobian.
-
-        4. **Loss reporting**: separately compute the actual scalar
-           cost ``J = α_L Σ L Δt + α_G G(z_N)`` (no grad) for monitoring.
-           This is what we log; the surrogate is what we backward.
+        4. **Loss reporting**: cost on the clean trajectory.
 
         Returns
         -------
         dict with keys
-          ``surrogate``       — scalar tensor with autograd graph; trainer
-                                calls ``.backward()`` on this.
-          ``total_cost``      — float, value of ``J`` (running + terminal).
-          ``running_cost``    — float, ``Σ L Δt``.
-          ``terminal_cost``   — float, ``G(z_N)``.
-          ``z_traj``          — ``(B, n, nt+1)``, detached.
-          ``u_traj``          — ``(B, m, nt)``, detached.
+          ``surrogate``       — scalar tensor with autograd graph.
+          ``total_cost``      — float, J on the **clean** trajectory.
+          ``running_cost``    — float, Σ L Δt on the clean trajectory.
+          ``terminal_cost``   — float, G(z_N) on the clean trajectory.
+          ``z_traj``          — ``(B, n, nt+1)``, detached, clean trajectory.
+          ``u_traj``          — ``(B, m, nt)``, detached, clean controls.
           ``p_traj``          — ``(B, n, nt+1)``, detached costate sequence.
-          ``lin_residual``    — float, mean linear-model residual averaged
-                                over time steps (estimator diagnostic).
+          ``lin_residual``    — float, mean linear-model residual from the
+                                exploration rollout (or clean rollout when
+                                ``exploration_std == 0``).
         """
         device = z0.device
         B = z0.shape[0]
@@ -261,32 +261,57 @@ class ImplicitOC_RL(ABC):
         N = self.nt
         dt = self.h
 
-        # -------- 1. Forward rollout (no grad) ------------------------- #
+        lin_residual_acc = 0.0
+
+        # -------- 1a. Exploration rollout (only when noise is active) --- #
+        # Noisy controls excite the env so the RLS estimator can identify
+        # b_k = ∂f/∂u. The trajectory produced here is discarded.
+        if exploration_std > 0.0:
+            z_exp = z0.detach()
+            t = self.t_initial
+            with torch.no_grad():
+                for k in range(N):
+                    _, b_k = jac_est.AB(k)
+                    policy.set_step_jacobian(b_k)
+                    u_k_policy = policy(z_exp, t).view(B, m)
+                    u_k_explore = u_k_policy + exploration_std * torch.randn_like(u_k_policy)
+                    if getattr(policy, "use_control_limits", False):
+                        u_k_explore = u_k_explore.clamp(policy.u_min, policy.u_max)
+                    z_next = env.step(z_exp, u_k_explore, t)
+                    jac_est.update(k, z_exp, u_k_explore, z_next)
+                    lin_residual_acc += jac_est.linear_model_residual(
+                        k, z_exp, u_k_explore, z_next
+                    ).item()
+                    z_exp = z_next
+                    t = t + dt
+
+        # -------- 1b. Clean rollout (no grad) -------------------------- #
+        # Policy controls only — uses the freshly updated b_k estimates.
+        # All downstream quantities (adjoint, surrogate, costs) are built
+        # from this trajectory, so they reflect the policy's true behaviour.
         z_traj = torch.zeros(B, n, N + 1, device=device, dtype=z0.dtype)
         u_traj = torch.zeros(B, m, N, device=device, dtype=z0.dtype)
         z_traj[:, :, 0] = z0
         z = z0.detach()
         t = self.t_initial
-
         running_cost_acc = torch.zeros(B, device=device, dtype=z0.dtype)
-        lin_residual_acc = 0.0
 
         with torch.no_grad():
             for k in range(N):
-                # Push the *current* b_k into the policy before its FP iteration.
                 _, b_k = jac_est.AB(k)
                 policy.set_step_jacobian(b_k)
-
                 u_k = policy(z, t).view(B, m)
                 z_next = env.step(z, u_k, t)
 
-                # Update the estimator with this freshly observed transition.
-                jac_est.update(k, z, u_k, z_next)
-                lin_residual_acc += jac_est.linear_model_residual(k, z, u_k, z_next).item()
+                # When not exploring, update the estimator from the clean
+                # rollout (preserves the original single-rollout behaviour).
+                if exploration_std == 0.0:
+                    jac_est.update(k, z, u_k, z_next)
+                    lin_residual_acc += jac_est.linear_model_residual(
+                        k, z, u_k, z_next
+                    ).item()
 
-                # Running cost (analytical L; the agent knows L by assumption).
                 running_cost_acc = running_cost_acc + dt * self.compute_lagrangian(t, z, u_k)
-
                 u_traj[:, :, k] = u_k
                 z_traj[:, :, k + 1] = z_next
                 z = z_next
@@ -297,7 +322,9 @@ class ImplicitOC_RL(ABC):
         # -------- 2. Backward adjoint pass (no grad) ------------------- #
         p_traj = torch.zeros(B, n, N + 1, device=device, dtype=z0.dtype)
         with torch.no_grad():
-            p_kp1 = self.compute_grad_G_z(z_traj[:, :, N])    # (B, n)
+            # p_N = αG · ∇G — scale by alphaG so the terminal cost carries
+            # the correct weight in both the adjoint and the bracket below.
+            p_kp1 = self.alphaG * self.compute_grad_G_z(z_traj[:, :, N])  # (B, n)
             p_traj[:, :, N] = p_kp1
             t_back = self.t_initial + (N - 1) * dt
             for k in range(N - 1, -1, -1):
@@ -308,19 +335,14 @@ class ImplicitOC_RL(ABC):
                     a_k = a_k.expand(B, -1, -1)
                 # a_kᵀ @ p_{k+1}: (B, n, n)ᵀ @ (B, n, 1) -> (B, n, 1) -> (B, n)
                 aT_p = torch.bmm(a_k.transpose(1, 2), p_kp1.unsqueeze(-1)).squeeze(-1)
-                grad_z_L = self.compute_grad_lagrangian_z(t_back, z_k, u_k)
+                # αL · ∇_z L
+                grad_z_L = self.alphaL * self.compute_grad_lagrangian_z(t_back, z_k, u_k)
                 p_k = p_kp1 + dt * (aT_p + grad_z_L)
                 p_traj[:, :, k] = p_k
                 p_kp1 = p_k
                 t_back = t_back - dt
 
         # -------- 3. JFB surrogate (autograd through phi only) --------- #
-        # Important: the policy was used WITHOUT grad in step 1, so its
-        # internal FP iteration cached fixed points without a graph. To
-        # build the JFB surrogate we re-evaluate T̂_k once per step using
-        # the *detached* converged controls — only the value-function
-        # gradient that appears inside T̂ carries θ-dependence, which is
-        # exactly the JFB approximation.
         surrogate = torch.zeros((), device=device, dtype=z0.dtype)
         for k in range(N):
             t_k = self.t_initial + k * dt
@@ -330,39 +352,26 @@ class ImplicitOC_RL(ABC):
             b_k_det = b_k.detach()
             p_kp1_det = p_traj[:, :, k + 1].detach()
 
-            # ∇_u L at (t, z̄, ū) — no θ-dependence; safe to leave attached
-            # but we detach for clarity.
-            grad_uL = self.compute_grad_lagrangian(t_k, z_k, u_k).detach()
+            # αL · ∇_u L — consistent with the αL scaling in compute_grad_H_u_estimated
+            # and in the adjoint step above.
+            grad_uL = (self.alphaL * self.compute_grad_lagrangian(t_k, z_k, u_k)).detach()
 
-            # The θ-dependent piece: ∇_z φ_θ(t, z̄_k). policy.p_net is the
-            # value-function network; passing requires_grad=False z_k still
-            # lets the gradient flow through θ.
+            # θ-dependent piece: ∇_z φ_θ(t, z̄_k). Gradient flows through
+            # θ even though z_k is detached.
             p_phi = policy.p_net(t_k, z_k)                # (B, n)
 
-            # ∇_u H at (z̄, ū, ∇_z φ_θ, b_k) — only p_phi is θ-dependent.
             if b_k_det.shape[0] == 1 and B > 1:
                 b_k_b = b_k_det.expand(B, -1, -1)
             else:
                 b_k_b = b_k_det
             grad_uH = grad_uL + torch.bmm(b_k_b, p_phi.unsqueeze(-1)).view(B, m)
+            T_k = policy.apply_control_limits(u_k - policy.alpha * grad_uH)  # (B, m)
 
-            # T̂_k(ū_k; z̄_k) — with the existing repo's sign convention.
-            T_k = u_k - policy.alpha * grad_uH            # (B, m)
-
-            # Bracket — fully detached.
             bracket = dt * (grad_uL + torch.bmm(b_k_b.detach(), p_kp1_det.unsqueeze(-1)).view(B, m))
             bracket = bracket.detach()
 
-            # Inner product, mean over batch (matches the existing
-            # mean-over-batch convention in compute_loss).
             surrogate = surrogate + (T_k * bracket).sum(dim=1).mean()
 
-        # Add the parts of J that depend on θ ONLY through the rollout —
-        # for the JFB approximation those don't contribute to the gradient
-        # (the rollout is detached), so we add them to ``surrogate`` as
-        # detached scalars *only* for logging convenience. The trainer
-        # backwards ``surrogate`` for the gradient and reports
-        # ``total_cost`` for the loss curve.
         running_cost_mean = running_cost_acc.mean().item()
         terminal_cost_mean = terminal_cost_per_sample.mean().item()
         total_cost = self.alphaL * running_cost_mean + self.alphaG * terminal_cost_mean

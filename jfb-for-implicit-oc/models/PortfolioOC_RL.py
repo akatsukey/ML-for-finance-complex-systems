@@ -58,7 +58,7 @@ import numpy as np
 import torch
 
 # core-RL/ is on sys.path (the runner adds it); flat import.
-from ImplicitOC_RL import ImplicitOC_RL, TimeLike
+from core_RL.ImplicitOC_RL import ImplicitOC_RL, TimeLike
 
 from benchmarking import Trajectory
 from benchmarking.plotter import Panel

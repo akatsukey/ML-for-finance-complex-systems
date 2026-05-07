@@ -87,6 +87,8 @@ class OptimalControlTrainer_RL(OptimalControlTrainer):
         device: str = "cpu",
         tag: str = "JFB-RL",
         run_io=None,
+        exploration_std: float = 0.5,
+        exploration_decay: float = 0.99,
     ):
         super().__init__(
             policy_net=policy_net,
@@ -100,12 +102,16 @@ class OptimalControlTrainer_RL(OptimalControlTrainer):
         )
         self.env = env
         self.jac_est = jac_est
-        # The trainer mode label is used by the parent to decide which step
-        # function to call; we set our own.
         self.mode = "rl"
 
+        # Exploration schedule: start with wide Gaussian noise on u_k during
+        # rollout so the RLS estimator sees control variation and learns b_k.
+        # Decayed multiplicatively each epoch so that late training is clean.
+        self.exploration_std = exploration_std
+        self.exploration_decay = exploration_decay
+
         # Extend the history schema with RL-specific diagnostics.
-        for k in ("lin_residual",):
+        for k in ("lin_residual", "exploration_std"):
             if k not in self.history:
                 self.history[k] = []
 
@@ -124,6 +130,7 @@ class OptimalControlTrainer_RL(OptimalControlTrainer):
             env=self.env,
             jac_est=self.jac_est,
             z0=z0,
+            exploration_std=self.exploration_std,
         )
         surrogate = out["surrogate"]
 
@@ -216,6 +223,8 @@ class OptimalControlTrainer_RL(OptimalControlTrainer):
             max_memory_MB = 0.0
             epoch_start_time = time.time()
             step_info = self.train_epoch(z0)
+            step_info["exploration_std"] = self.exploration_std
+            self.exploration_std *= self.exploration_decay
             if self.scheduler is not None:
                 self.scheduler.step(step_info["loss"])
 

@@ -193,16 +193,24 @@ class RLSJacobianEstimator(JacobianEstimator):
         self.q0 = q0
 
         d = state_dim + control_dim + 1  # regression-vector length
-        # F_t : (n, d), one matrix per time step
-        self.F = [torch.zeros(state_dim, d, device=device) for _ in range(nt)]
+        # F_t : (n, d), one matrix per time step.
+        # Initialise A_disc = I (identity block) so that before any data the
+        # continuous-time estimate is a_k = (I − I)/dt = 0 rather than
+        # (0 − I)/dt = −I/dt, which would collapse the adjoint to zero
+        # immediately and kill gradient signal during the RLS warm-up.
+        F0 = torch.zeros(state_dim, d, device=device)
+        F0[:state_dim, :state_dim] = torch.eye(state_dim, device=device)
+        self.F = [F0.clone() for _ in range(nt)]
         # Q_t : (d, d), inverse-covariance accumulator
         self.Q = [q0 * torch.eye(d, device=device) for _ in range(nt)]
         self._d = d
 
     def reset(self) -> None:
         d = self._d
+        n = self.state_dim
         for t in range(self.nt):
             self.F[t].zero_()
+            self.F[t][:n, :n] = torch.eye(n, device=self.device)
             self.Q[t] = self.q0 * torch.eye(d, device=self.device)
 
     def update(

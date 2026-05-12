@@ -349,19 +349,26 @@ def resolve_liquidation_fp_alpha(prob: Any, fp_alpha: float | str) -> float:
     return float(fp_alpha)
 
 
-def _broadcast(values: list[float], n_assets: int, name: str) -> list[float]:
-    """Broadcast a CLI per-asset list to length ``n_assets``.
+def _broadcast(values: list[float], n_assets: int, name: str):
+    """Broadcast CLI input.
 
-    A single scalar is repeated; a length-``n_assets`` list passes through;
-    anything else is rejected.
+    Accepts:
+        - 1 value: scalar
+        - n values: vector
+        - n*n values: full matrix, row-wise
     """
     if len(values) == 1:
         return values * n_assets
+
     if len(values) == n_assets:
         return list(values)
+
+    if len(values) == n_assets * n_assets:
+        return np.asarray(values, dtype=float).reshape(n_assets, n_assets)
+
     raise SystemExit(
-        f"--{name} expected 1 or {n_assets} values (n_assets={n_assets}); "
-        f"got {len(values)}: {values}"
+        f"--{name} expected 1, {n_assets}, or {n_assets*n_assets} values "
+        f"(n_assets={n_assets}); got {len(values)}: {values}"
     )
 
 
@@ -381,8 +388,8 @@ def build_problem(args: argparse.Namespace, device: str) -> LiquidationPortfolio
         t_final=args.t_final,
         nt=args.nt,
         n_assets=n,
-        sigma=tuple(sigma),
-        kappa=tuple(kappa),
+        sigma=sigma,
+        kappa=kappa,
         eta=tuple(eta),
         gamma=args.gamma,
         epsilon=args.epsilon,
@@ -531,43 +538,82 @@ def _plot_multiasset_rollout(
     n_show: int,
     title: str | None = None,
     tag: str | None = None,
+    include_bvp: bool = True,
 ) -> None:
-    """Multi-asset analogue of :meth:`LiquidationBenchmark.plot_comparison`.
+    """Plot multi-asset liquidation rollouts.
 
-    Rolls out each labeled policy with :class:`JFBPolicyRollout` for the
-    first ``n_show`` initial conditions and overlays them on the
-    ``liquidation_panels(n_assets)`` grid. No exact reference is drawn:
-    the closed-form BVP solver only handles the single-asset case, so for
-    ``n_assets > 1`` we fall back to JFB-only.
+    Shows JFB policies and, when gamma=2, the exact BVP reference.
     """
     from dataclasses import replace as _dc_replace
+
     palette = ("#d6604d", "#4daf4a", "#984ea3", "#ff7f00", "#377eb8")
     batch = min(z0_batch.shape[0], n_show)
     z0 = z0_batch[:batch].to(prob.device)
+
     trajectories = []
+
+    # Add exact BVP reference. Only valid for gamma=2.
+    if include_bvp and abs(float(prob.gamma) - 2.0) < 1e-6:
+        bvp_solver = AlmgrenChrissBVPSolver(prob)
+
+        for b in range(batch):
+            tr_bvp = bvp_solver.solve(z0[b])
+
+            tr_bvp = _dc_replace(
+                tr_bvp,
+                label="Exact BVP" if b == 0 else None,
+                style={
+                    "color": "#2166ac",
+                    "ls": "--",
+                    "lw": 2.0,
+                    "alpha": 0.85,
+                },
+            )
+
+            trajectories.append(tr_bvp)
+
+    elif include_bvp:
+        print("[info] Exact BVP skipped: requires gamma=2.")
+
+    # Add JFB / learned policies.
     for i, (label, pol) in enumerate(policies.items()):
         color = palette[i % len(palette)]
         roller = JFBPolicyRollout(prob, pol)
+
         for b in range(batch):
             tr = roller.solve(z0[b])
+
             tr = _dc_replace(
                 tr,
                 label=label if b == 0 else None,
-                style={"color": color, "lw": 2.0, "alpha": 0.75},
+                style={
+                    "color": color,
+                    "lw": 2.0,
+                    "alpha": 0.75,
+                },
             )
+
             trajectories.append(tr)
 
+    # Build standard liquidation panels:
+    # q_i(t), u_i(t), S_i(t), and shared X(t).
     panels = liquidation_panels(prob.n_assets)
     ncols = 3 if prob.n_assets > 1 else 2
+
     if title is None:
+        has_bvp = include_bvp and abs(float(prob.gamma) - 2.0) < 1e-6
         tag_str = f"  [{tag}]" if tag else ""
         title = (
             f"Liquidation portfolio (n_assets={prob.n_assets}) — "
-            f"{' vs '.join(policies.keys())}  "
+            f"{' vs '.join(policies.keys())}"
+            f"{' vs Exact BVP' if has_bvp else ''} "
             f"(γ={prob.gamma:.1f}){tag_str}"
         )
+
     BenchmarkPlotter(panels, ncols=ncols).plot(
-        trajectories, save_path=save_path, title=title,
+        trajectories,
+        save_path=save_path,
+        title=title,
     )
 
 
@@ -728,39 +774,39 @@ def main() -> None:
         policies["JFB (full AD)"] = inn_ad
         _add_learned_costate_overlays("AD", inn_ad.p_net)
 
-    if prob.n_assets == 1:
-        # Single-asset: keep the legacy 6-panel BVP-vs-JFB comparison figure.
-        # Tag is injected into the figure title for parity with the
-        # multi-asset path.
-        bench = LiquidationBenchmark(prob)
-        policy_str = "JFB" if len(policies) == 1 else " vs ".join(policies.keys())
-        bench_title = (
-            f"LiquidationPortfolio — {policy_str} vs Exact BVP  "
-            f"(γ={float(prob.gamma):.1f}, η={float(prob.eta):g}, "
-            f"κ={float(prob.kappa):.0e})  [{args.tag}]"
-        )
-        if len(policies) == 1:
-            bench.plot_comparison(inn_jfb, z0_plot, save_path=out,
-                                  n_show=args.n_show, title=bench_title)
-        else:
-            bench.plot_comparison(
-                policies, z0_plot, save_path=out, n_show=args.n_show,
-                title=bench_title,
-            )
-    else:
-        # Multi-asset: closed-form BVP solver doesn't generalise yet, so we
-        # produce a JFB-only roll-out figure with one (q_i, u_i, S_i) row
-        # per asset plus a shared X(t) panel.
-        print(
-            "[info] Multi-asset run (n_assets > 1): exact BVP reference is "
-            "single-asset only and is being skipped. The figure shows the "
-            "JFB rollout(s) on the per-asset panels."
-        )
-        _plot_multiasset_rollout(
-            prob, policies, z0_plot, save_path=out, n_show=args.n_show,
-            tag=args.tag,
-        )
-    print(f"Figure written to: {os.path.abspath(out)}")
+    # if prob.n_assets == 1:
+    #     # Single-asset: keep the legacy 6-panel BVP-vs-JFB comparison figure.
+    #     # Tag is injected into the figure title for parity with the
+    #     # multi-asset path.
+    #     bench = LiquidationBenchmark(prob)
+    #     policy_str = "JFB" if len(policies) == 1 else " vs ".join(policies.keys())
+    #     bench_title = (
+    #         f"LiquidationPortfolio — {policy_str} vs Exact BVP  "
+    #         f"(γ={float(prob.gamma):.1f}, η={float(prob.eta):g}, "
+    #         f"κ={float(prob.kappa):.0e})  [{args.tag}]"
+    #     )
+    #     if len(policies) == 1:
+    #         bench.plot_comparison(inn_jfb, z0_plot, save_path=out,
+    #                               n_show=args.n_show, title=bench_title)
+    #     else:
+    #         bench.plot_comparison(
+    #             policies, z0_plot, save_path=out, n_show=args.n_show,
+    #             title=bench_title,
+    #         )
+    print(
+        "[info] Multi-asset run: plotting JFB rollout(s)"
+        + (" with exact BVP reference." if abs(float(prob.gamma) - 2.0) < 1e-6 else ".")
+    )
+
+    _plot_multiasset_rollout(
+        prob,
+        policies,
+        z0_plot,
+        save_path=out,
+        n_show=args.n_show,
+        tag=args.tag,
+        include_bvp=True,
+    )
 
     if args.diagnostics:
         z0_diag = z0_plot[0].detach().cpu().numpy().reshape(-1)

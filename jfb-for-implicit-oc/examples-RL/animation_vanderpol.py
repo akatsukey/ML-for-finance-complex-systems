@@ -226,7 +226,7 @@ def build_rollout_database():
             "Il faut d'abord relancer l'entraînement avec la sauvegarde des checkpoints."
         )
 
-    print(f"{len(ckpt_paths)} checkpoints trouvés.")
+    print(f"{len(ckpt_paths)} checkpoints found.")
 
     # Fixed initial condition for all episodes
     torch.manual_seed(SEED + 1)
@@ -234,7 +234,7 @@ def build_rollout_database():
     z0_single = prob.sample_initial_condition()[0].to(DEVICE)
     prob.batch_size = BATCH
 
-    print(f"Condition initiale utilisée pour toute l'animation: {z0_single.tolist()}")
+    print(f"Used initial conditions for the : {z0_single.tolist()}")
 
     episodes = []
 

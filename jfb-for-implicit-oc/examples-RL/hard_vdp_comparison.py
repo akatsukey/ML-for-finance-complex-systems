@@ -68,6 +68,7 @@ N_EPOCHS   = 50     # epochs per method
 LR         = 3e-3    # Adam learning rate for both methods
 GRAD_CLIP  = 1.0     # gradient norm clip (applied to both)
 
+
 # JFB-RL specific
 EXPLORE_STD   = 0.3   # initial exploration noise standard deviation
 EXPLORE_DECAY = 0.99  # multiplicative decay per epoch

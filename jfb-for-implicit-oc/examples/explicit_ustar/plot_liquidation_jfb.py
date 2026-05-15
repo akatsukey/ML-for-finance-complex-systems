@@ -279,6 +279,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--gamma", type=float, default=2.0)
     p.add_argument("--epsilon", type=float, default=1e-2)
     p.add_argument("--alpha", type=float, default=3.0)
+    p.add_argument("--alphaX", type=float, default=1.0)
     p.add_argument("--q0-min", type=float, nargs="+", default=[0.5])
     p.add_argument("--q0-max", type=float, nargs="+", default=[1.5])
     p.add_argument("--S0",     type=float, nargs="+", default=[1.0])
@@ -398,6 +399,7 @@ def build_problem(args: argparse.Namespace, device: str) -> LiquidationPortfolio
         gamma=args.gamma,
         epsilon=args.epsilon,
         alpha=args.alpha,
+        alphaX=args.alphaX,
         q0_min=tuple(q0_min),
         q0_max=tuple(q0_max),
         S0=tuple(S0),
@@ -778,6 +780,198 @@ def plot_jfb_vs_ad_training_curves(
 
     print(f"Training comparison plot written to: {os.path.abspath(save_path)}")
 
+def plot_best_policy_same_axes(
+    prob,
+    trainer,
+    z0=None,
+    save_path=None,
+    label="Best policy",
+    include_bvp=True,
+    path_index=0,
+):
+    """
+    Reload best policy from trainer checkpoint and plot q_i, u_i, S_i, X
+    with all assets on shared axes.
+
+    Same asset = same color for policy and BVP.
+    Method difference:
+        - Best policy: solid line
+        - Exact BVP: dashed line
+    """
+    import os
+    import torch
+    import matplotlib.pyplot as plt
+    from dataclasses import replace as _dc_replace
+    from benchmarking import JFBPolicyRollout
+    from benchmarking.solvers import AlmgrenChrissBVPSolver
+
+    # Reload best checkpoint.
+    ckpt_path = trainer.run_io.policy_path()
+    if os.path.isfile(ckpt_path):
+        trainer.policy.load_state_dict(
+            torch.load(ckpt_path, map_location=prob.device, weights_only=True)
+        )
+    else:
+        print(f"[warn] Best checkpoint not found: {ckpt_path}")
+
+    trainer.policy.eval()
+
+    z0 = prob.sample_initial_condition()
+    z0_one = z0[path_index]
+
+    trajectories = []
+
+    # Exact BVP reference.
+    if include_bvp and abs(float(prob.gamma) - 2.0) < 1e-6:
+        bvp_solver = AlmgrenChrissBVPSolver(prob)
+        tr_bvp = bvp_solver.solve(z0_one)
+
+        tr_bvp = _dc_replace(
+            tr_bvp,
+            label="Exact BVP",
+            style={
+                "ls": "--",
+                "lw": 2.0,
+                "alpha": 0.85,
+            },
+        )
+        trajectories.append(tr_bvp)
+
+    # Learned best policy.
+    roller = JFBPolicyRollout(prob, trainer.policy)
+    tr_policy = roller.solve(z0_one)
+
+    tr_policy = _dc_replace(
+        tr_policy,
+        label=label,
+        style={
+            "ls": "-",
+            "lw": 2.0,
+            "alpha": 0.85,
+        },
+    )
+    trajectories.append(tr_policy)
+
+    n = prob.n_assets
+
+    fig, axes = plt.subplots(2, 2, figsize=(12, 7))
+
+    ax_q = axes[0, 0]
+    ax_u = axes[0, 1]
+    ax_S = axes[1, 0]
+    ax_X = axes[1, 1]
+
+    # One color per asset. BVP and policy use the same color for the same asset.
+    asset_colors = [
+        "#1f77b4",  # blue
+        "#ff7f0e",  # orange
+        "#2ca02c",  # green
+        "#d62728",  # red
+        "#9467bd",  # purple
+        "#8c564b",  # brown
+        "#e377c2",  # pink
+        "#7f7f7f",  # gray
+    ]
+
+    for tr in trajectories:
+        t = tr.t
+        z = tr.z
+        u = tr.u
+
+        style = tr.style or {}
+        method_ls = style.get("ls", "-")
+        lw = style.get("lw", 2.0)
+        alpha = style.get("alpha", 0.85)
+
+        q = z[:, :n]
+        S = z[:, n:2*n]
+        X = z[:, 2*n] if z.shape[1] >= 2*n + 1 else None
+
+        for i in range(n):
+            color_i = asset_colors[i % len(asset_colors)]
+
+            # Label only q panel to avoid duplicate huge legends everywhere.
+            ax_q.plot(
+                t,
+                q[:, i],
+                color=color_i,
+                linestyle=method_ls,
+                linewidth=lw,
+                alpha=alpha,
+                label=f"Asset {i+1} — {tr.label}",
+            )
+
+            ax_S.plot(
+                t,
+                S[:, i],
+                color=color_i,
+                linestyle=method_ls,
+                linewidth=lw,
+                alpha=alpha,
+            )
+
+            if u is not None:
+                ax_u.plot(
+                    t[:-1],
+                    u[:, i],
+                    color=color_i,
+                    linestyle=method_ls,
+                    linewidth=lw,
+                    alpha=alpha,
+                )
+
+        # Cash is portfolio-level, not asset-level.
+        if X is not None:
+            cash_color = "black" if tr.label == "Exact BVP" else "#d6604d"
+            ax_X.plot(
+                t,
+                X,
+                color=cash_color,
+                linestyle=method_ls,
+                linewidth=lw,
+                alpha=alpha,
+                label=tr.label,
+            )
+
+    ax_q.set_title("Inventory $q_i(t)$")
+    ax_q.set_xlabel("t")
+    ax_q.set_ylabel("q")
+    ax_q.grid(True, alpha=0.3)
+    ax_q.legend(
+    fontsize=8,
+    loc="center left",
+    bbox_to_anchor=(1.02, 0.5),
+    borderaxespad=0.0,
+)
+    ax_u.set_title("Trading rate $u_i(t)$")
+    ax_u.set_xlabel("t")
+    ax_u.set_ylabel("u")
+    ax_u.grid(True, alpha=0.3)
+
+    ax_S.set_title("Impacted price $S_i(t)$")
+    ax_S.set_xlabel("t")
+    ax_S.set_ylabel("S")
+    ax_S.grid(True, alpha=0.3)
+    ax_S.ticklabel_format(style="plain", axis="y", useOffset=False)
+
+    ax_X.set_title("Cash $X(t)$")
+    ax_X.set_xlabel("t")
+    ax_X.set_ylabel("X")
+    ax_X.grid(True, alpha=0.3)
+    ax_X.legend(fontsize=8)
+
+    fig.suptitle(f"Best policy rollout, n_assets={n}, gamma={prob.gamma:g}")
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
+
+    if save_path is None:
+        save_path = trainer.run_io.rollout_path()
+
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    fig.savefig(save_path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+
+    print(f"Best-policy shared-axis plot written to: {os.path.abspath(save_path)}")
+
 
 def main() -> None:
     args = parse_args()
@@ -907,6 +1101,19 @@ def main() -> None:
         n_show=args.n_show,
         tag=args.tag,
         include_bvp=True,
+    )
+
+    plot_best_policy_same_axes(
+        prob=prob,
+        trainer=trainer_jfb,
+        z0=z0_plot,
+        save_path=os.path.join(
+            results_dir(type(prob).__name__, "benchmark"),
+            f"best_policy_same_axes_{args.tag}.png",
+        ),
+        label="JFB best policy",
+        include_bvp=True,
+        path_index=0,
     )
 
     if args.diagnostics:

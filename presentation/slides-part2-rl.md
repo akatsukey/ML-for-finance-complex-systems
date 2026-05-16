@@ -15,7 +15,7 @@ mdc: true
 - **Trajectory** still $z_x(t)$ under chosen controls; **objective** $\mathbb{E}\bigl[\sum_t \gamma^t L(t,z_x(t),u_t) + G(z_x(T))\bigr]$
 
 <!--
-This file is merged after section 1 (subsections **1.1**–**1.9**); titles here use section 2 subnumbering (2.1–2.9). When you run `slidev slides-part2-rl.md` alone, numbering still reflects “Part II” of the full talk. Notation: z is state, x is only the initial label in z(0)=x.
+This file is merged after section 1 (subsections **1.1**–**1.10**); titles here use section 2 subnumbering (2.1–2.9). When you run `slidev slides-part2-rl.md` alone, numbering still reflects “Part II” of the full talk. Notation: z is state, x is only the initial label in z(0)=x.
 -->
 
 ---

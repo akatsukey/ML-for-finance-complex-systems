@@ -40,6 +40,25 @@
   margin: 0.85em 0;
 }
 
+/* Pull objective block tight under the “Objective” label */
+.slidev-layout p:has(+ .objective-math) {
+  margin-bottom: 0;
+}
+
+.slidev-layout .objective-math {
+  margin-top: -0.35rem;
+}
+
+.slidev-layout .objective-math p {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.slidev-layout .objective-math .katex-display {
+  margin-top: 0;
+  margin-bottom: 0.75em;
+}
+
 /* Slightly more breathing room around slides */
 .slidev-page {
   padding: 2rem 2.5rem;
@@ -96,6 +115,32 @@
   margin-bottom: 0.45rem;
 }
 
+/* Secondary restatement (e.g. differential form) — softened vs main slide body */
+.slidev-layout .equiv-box {
+  margin-top: 0.65rem;
+  padding: 0.55rem 1rem 0.6rem;
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 0.45rem;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  background: rgba(241, 245, 249, 0.55);
+  opacity: 0.72;
+}
+
+.slidev-layout .equiv-box .equiv-box__title {
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  opacity: 0.85;
+  margin-bottom: 0.35rem;
+  color: #475569;
+}
+
+.slidev-layout .equiv-box .katex-display {
+  margin: 0.35rem 0 0 !important;
+}
+
 /* Pseudocode algorithm box — #0f2841 ocean panel, #fac05e keywords */
 .slidev-layout pre.algo-box {
   display: block;
@@ -146,6 +191,11 @@
 .slidev-layout pre.algo-box .algo-cm {
   color: rgba(212, 228, 242, 0.55);
   font-style: italic;
+}
+
+/* De-emphasise scaffolding lines (batch / bookkeeping) vs inner time-step loop */
+.slidev-layout pre.algo-box .algo-line-muted {
+  opacity: 0.72;
 }
 
 

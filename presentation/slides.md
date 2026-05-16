@@ -32,9 +32,13 @@ $$
 
 **Generalized Hamiltonian**
 
+
+
 $$
 \mathcal{H}(t, z_x, p_x, u) = -\,p_x^\top f(t, z_x, u) - L(t, z_x, u)
 $$
+
+
 
 **State and adjoint** along an optimal control $u^\star$
 
@@ -46,12 +50,16 @@ $$
 \dot p_x = \nabla_{z_x} \mathcal{H}(t, z_x, p_x, u^\star), \qquad p_x(T) = \nabla G\bigl(z_x(T)\bigr)
 $$
 **Optimality**
+
+<div class="important-box optimality-important">
+<div class="important-box__label">Important</div>
+
 $$
 u^\star(t) \in \arg\max_{u} \mathcal{H}\bigl(t, z_x(t), p_x(t), u\bigr)
 \quad \Longrightarrow \quad
-\nabla_u \mathcal{H}\bigl(t, z_x(t), p_x(t), u^\star(t)\bigr) = 0
+\textcolor{red}{\nabla_u \mathcal{H}\bigl(t, z_x(t), p_x(t), u^\star(t)\bigr) = 0}
 $$
-
+</div>
 
 ---
 
@@ -74,10 +82,14 @@ $$
 
 **Bridge with original formulation**
 
+<div class="important-box">
+<div class="important-box__label">Important</div>
+
 $$
 p_x(t) = \nabla_z \phi_\theta\bigl(t, z_x(t)\bigr)
 $$
 
+</div>
 
 
 ---
@@ -102,20 +114,23 @@ $$
 
 **Fixed-point characterization**
 
+<div class="important-box">
+<div class="important-box__label">Important</div>
+
 $$
-u_\theta^* = T_\theta(u_\theta^*;\, t, z)
+T_\theta(u;\, t, z) = u + \alpha \,\nabla_u \mathcal{H}(t, z, \textcolor{red}{\nabla_z \phi_\theta}, u)
 $$
 $$
-T_\theta(u;\, t, z) = u + \alpha \,\nabla_u \mathcal{H}(t, z, \nabla_z \phi_\theta, u)
+T_\theta(u_\theta^*;\, t, z) = u_\theta^* 
 $$
+
+</div>
 
 </div>
 
 <div>
 
 **JFB approximation**
-
-
 
 $$
 \frac{\partial u_\theta^*}{\partial \theta}
@@ -133,7 +148,7 @@ $$
 
 </div>
 
-<div class="text-sm mt-4">
+<div class="text-sm comparison-table-snug">
 
 | | Exact IFT | AD | JFB |
 |:--|:--|:--|:--|
@@ -168,14 +183,299 @@ $$
 $$
 
 <br>
+<div class="important-box">
+<div class="important-box__label">Important</div>
 
 $$
 \Longleftrightarrow \quad \nabla^2_{uu}\mathcal{H} \prec 0 \quad (\mathcal{H} \text{ strictly concave in } u)
 $$
 
+</div>
+
 ---
 
 ## 1.4. Training algorithm - (extra details)
+
+<PipelineBox title="End to end training pipeline">
+
+$$
+\phi_\theta(t,z) \;\longrightarrow\; p_\theta = \nabla_z \phi_\theta(t,z) \;\longrightarrow\; \text{INN } u_\theta^*(t,z, p_\theta) \;\longrightarrow\; z_x^\theta(t) \;\longrightarrow\; J(\theta)
+$$
+
+</PipelineBox>
+
+<pre v-pre class="algo-box"><code><span class="algo-line-muted"><span class="algo-ln"> 1:</span>  <span class="algo-kw">Initialize</span> networks with parameters <span class="algo-math">θ</span></span>
+<span class="algo-line-muted"><span class="algo-ln"> 2:</span>  <span class="algo-kw">for</span> iteration = 1, 2, … <span class="algo-kw">do</span></span>
+<span class="algo-line-muted"><span class="algo-ln"> 3:</span>      Sample a batch of initial states <span class="algo-math">{x_i} ∼ ρ</span></span>
+<span class="algo-line-muted"><span class="algo-ln"> 4:</span>      <span class="algo-kw">for</span> each trajectory <span class="algo-kw">do</span></span>
+<span class="algo-ln"> 5:</span>         <span class="algo-kw">for</span> <span class="algo-math">t</span> = 0, …, <span class="algo-math">N_t − 1</span> <span class="algo-kw">do</span>
+<span class="algo-ln"> 6:</span>              Compute grad of the value function <span class="algo-math">p ← ∇_z φ_θ (t, z)</span> <span class="algo-cm"># discrete adjoint</span>
+<span class="algo-ln"> 7:</span>              INN solves fixed point eq for optimal <span class="algo-math">u</span>  <span class="algo-cm"># K steps detached, then K′ steps on-graph</span>
+<span class="algo-ln"> 8:</span>              Evolve state <span class="algo-math">z</span> and increase running loss
+<span class="algo-ln"> 9:</span>         <span class="algo-kw">end for</span>
+<span class="algo-line-muted"><span class="algo-ln">10:</span>         Mix running loss with terminal <span class="algo-math">G(z)</span></span>
+<span class="algo-line-muted"><span class="algo-ln">11:</span>      <span class="algo-kw">end for</span></span>
+<span class="algo-line-muted"><span class="algo-ln">12:</span>      Average batch objectives for the final loss</span>
+<span class="algo-line-muted"><span class="algo-ln">13:</span>      Backprop on <span class="algo-math">θ</span></span>
+<span class="algo-line-muted"><span class="algo-ln">14:</span>  <span class="algo-kw">end for</span></span>
+</code></pre>
+
+
+
+
+- Gradient flows **only** through the **tracked tail** of length $K'$ — not through the $K$-step convergence loop or the state transitions
+
+
+<!--
+Speaker note: Inner loop on **u**: many Hamiltonian-ascent steps with no graph tape, then a short **tracked** tail (length K′) so only that tail contributes to gradients in **θ** (Term I / JFB). Dynamics in **z** are stepped without differentiating through the transition. Costate **p** is whatever **∇_z φ_θ** implementation you couple into **H** — the narrative here is Pontryagin/HJB bookkeeping, not a claim about computing that gradient by reverse-mode autodiff.
+-->
+
+---
+
+## 1.5. Almgren–Chriss reproduction example
+
+**State**
+
+$$
+z = (q, S, X) \qquad
+\dot z = f(z,u), \qquad
+f(z,u) = \begin{pmatrix} \dot q\\ \dot S \\ \dot X \end{pmatrix} =\begin{pmatrix} -u \\ -\kappa u \\ Su - \eta\,|u|^\gamma \end{pmatrix}
+$$
+
+$q$ is inventory, $S$ is the mid-price, $X$ generated cash and $u$ the **control** liquidation rate.
+
+**Objective**
+
+<div class="objective-math">
+
+$$
+J(u)
+=
+\int_0^T  \overbrace{ \textcolor{red}{\frac{\sigma^2}{2}\, q(t)^2 \,}}^{\,\text{running cost } L}dt
++
+\overbrace{\alpha\, q(T)^2 -
+\bigl(X(T)-X_0\bigr)}^{\, \text{terminal cost } G(T)}
+
+$$
+
+</div>
+
+Tradeoff between holding inventory and maximizing final profits.
+
+<div class="equiv-box">
+
+<div class="equiv-box__title" style="opacity: 1 !important">Equivalently</div>
+
+$$
+\mathrm{d}q = -u\,\mathrm{d}t,\qquad
+\textcolor{red}{\mathrm{d}S = -\kappa u\,\mathrm{d}t,\qquad}
+\mathrm{d}X = \bigl(Su - \eta\,|u|^\gamma\bigr)\,\mathrm{d}t
+$$
+
+</div>
+
+<!--
+This is the canonical optimal execution model with temporary price impact and liquidation costs. The benchmark is attractive because a deterministic boundary-value or PDE solution can be compared against the learned feedback without ambiguity about the “truth.”
+-->
+
+---
+
+## 1.6. Contractivity condition violated - $\nabla_{uu}^2\mathcal H$ picks up $p$
+
+<br>
+
+Recall the contractivity condition
+<br>
+
+$$
+\Gamma_c := \left\|\frac{\partial T_\theta}{\partial u}\right\| = \left\|I + \alpha\,\textcolor{red}{\nabla^2_{uu}\mathcal{H}}\right\| < 1
+$$
+
+
+but here we have 
+
+$$
+\textcolor{red}{\nabla_{uu}^2\mathcal{H}}= - \nabla_{uu}^2 L - \nabla_{uu}^2 f = - p_X \eta \gamma (\gamma - 1) u^{\gamma - 2} := \textcolor{red}{-p_X A}
+$$
+
+
+
+If the $A$ term is positive and $p_X = -1$, **we cannot have convergence**, as shown in
+
+<div class="important-box">
+<div class="important-box__label">Important</div>
+
+$$
+\Gamma_c := \left\|\frac{\partial T_\theta}{\partial u}\right\| = \left\| I + \alpha A \right\| > 1
+$$
+
+</div>
+
+
+
+---
+
+## 1.7. Reduced formulation and empirical outcome
+
+Reduced state but **minimisation problem is equivalent**
+
+
+$$
+z=(q,S)
+$$
+
+
+$$
+\begin{aligned}
+J(u)
+&= \int_0^T \frac{\sigma^2}{2}\, q(t)^2 \, dt + \alpha\, q(T)^2 - \bigl(\textcolor{green}{X(T)}-\textcolor{green}{X_0}\bigr) \\
+&= \int_0^T \frac{\sigma^2}{2}\, q(t)^2 \, dt + \alpha\, q(T)^2 - \int_0^T \dot{\textcolor{green}{X}}(t)\, dt,
+   && \\
+&= \int_0^T \underbrace{\Bigl( \tfrac{\sigma^2}{2}\, q(t)^2 - \textcolor{darkblue}{S(t)\, u(t) + \eta\,|u(t)|^\gamma} \Bigr)}_{\text{new running cost } L'}\, dt + \underbrace{\alpha\, q(T)^2}_{\text{terminal cost } G'(T)},
+   && \quad \dot{\textcolor{green}{X}} = \textcolor{darkblue}{Su - \eta\,|u|^\gamma}
+\end{aligned}
+$$
+
+
+<div class="important-box">
+<div class="important-box__label">Important</div>
+
+$$
+\Gamma_c := \left\|\frac{\partial T_\theta}{\partial u}\right\| = \left\| I - \alpha \eta \gamma (\gamma - 1) u^{\gamma - 2} \right\| = \left\| I - \alpha A \right\| < 1 \qquad \text{We're good 😎🔥}
+$$
+
+</div>
+
+
+<!-- $$
+\text{Augmented (§\,1.6)}\quad
+\bigl[\nabla_{uu}^2\mathcal{H}\bigr]_{ij}=\delta_{ij}\,\bigl(-p_X\,\eta_i\,\psi_\gamma''(u_i)\bigr),
+\qquad
+\text{Reduced §\,1.7, }\gamma=2\text{}\quad \mathrm{diag}(2\eta_i).
+$$ -->
+
+<!--
+Speaker: $X(T)-X_0=\int \dot X$ absorbs cash into $L'$; decomposition $\phi=X+\tilde\phi$ fixes $\partial_X\phi=1$. Hessian recap §1.6 vs §1.7.
+-->
+
+---
+
+## 1.8. Results
+
+**Plate A** · reduced liquidation $(q,S)$ versus boundary-value benchmark (inventory, rate, residuals, objectives — replace slots with exports).
+
+<!--
+Example drop-in paths (relative to `presentation/`):
+  ../jfb-for-implicit-oc/results/LiquidationPortfolioOC/benchmark/jfb_vs_exactbvp_benchmark_BIGQ.png
+-->
+
+<div class="results-grid">
+
+<div class="plot-slot">
+<div class="plot-slot__label">Plot A</div>
+<span>Benchmark trajectory / inventory</span>
+</div>
+
+<div class="plot-slot">
+<div class="plot-slot__label">Plot B</div>
+<span>Control vs time / oracle overlay</span>
+</div>
+
+<div class="plot-slot">
+<div class="plot-slot__label">Plot C</div>
+<span>Value or running loss error</span>
+</div>
+
+<div class="plot-slot">
+<div class="plot-slot__label">Plot D</div>
+<span>Terminal mismatch / diagnostics</span>
+</div>
+
+</div>
+
+<!--
+Speaker: cite experiment settings briefly; emphasize agreement with deterministic BVP / where implicit map failed on full $(q,S,X)$.
+-->
+
+---
+
+## 1.8. Results *(continued)*
+
+**Plate B** · training dynamics and rollouts $(\phi_\theta, u_\theta^\star)$
+
+<div class="results-grid">
+
+<div class="plot-slot">
+<div class="plot-slot__label">Plot E</div>
+<span>Training loss / Bellman surrogate</span>
+</div>
+
+<div class="plot-slot">
+<div class="plot-slot__label">Plot F</div>
+<span>Learning curves (subsample)</span>
+</div>
+
+<div class="plot-slot">
+<div class="plot-slot__label">Plot G</div>
+<span>Policy rollout trajectory</span>
+</div>
+
+<div class="plot-slot">
+<div class="plot-slot__label">Plot H</div>
+<span>Comparison vs.\ baseline / oracle</span>
+</div>
+
+</div>
+
+<!--
+Example: ../jfb-for-implicit-oc/results/PortfolioOC_RL/… and VanDerPol… as needed for part 2 teaser.
+-->
+
+---
+
+## 1.9. Stochastic extension (outlook)
+
+
+<div id="stochastic-equiv-box" class="equiv-box">
+
+<div class="equiv-box__title">Equivalently</div>
+
+$$
+\mathrm{d}q = -u\,\mathrm{d}t,\qquad
+\mathrm{d}S = -\kappa u\,\mathrm{d}t + \textcolor{#cc3412}{\sigma_{\!S}(t,z)\,\mathrm{d}W_t},\qquad
+\mathrm{d}X = \bigl(Su - \eta\,|u|^\gamma\bigr)\,\mathrm{d}t
+$$
+<br>
+$$
+\partial_t \phi_\theta + \max_u \left[
+L + \nabla_z \phi_\theta^\top f + \tfrac{1}{2}\operatorname{Tr}\bigl(\sigma \sigma^\top \nabla_{zz}^2 \phi_\theta\bigr)
+\right] = 0
+$$
+
+
+</div>
+
+
+
+
+$$
+\mathrm{d}p_t
+= -\bigl([\partial_z f(t,z^{\star}_t,u^{\star}_t)]^\top p_t + \nabla_z L(t,z^{\star}_t,u^{\star}_t)\bigr)\,\mathrm{d}t
++ q_t\,\mathrm{d}W_t,
+\qquad
+p(T)=\nabla_z G(z^{\star}_T).
+$$
+
+If $\Sigma=\Sigma(t,z,u)$ **depends on** $u$, the $\nabla_u \mathcal{H}=0$ characterization gains **explicit** diffusion–control coupling (open angles: Hessian/trace estimation variance, stochastic contractivity of $T_\theta$).
+<!--
+This is the forward-looking slide: stochastic HJB adds a trace term involving the Hessian of $\phi_\theta$. For neural $\phi_\theta$, that raises questions of variance and stability. Control-dependent diffusion couples into the implicit first-order condition for u, altering T_theta. Research questions include efficient JVP/HVP schemes, sample-based pathwise losses, and whether the inner map remains well-posed / contractive after discretization.
+-->
+
+---
+
+---
+
+## 1.9.2 Training algorithm - stochastic version - (extra details)
 
 <PipelineBox title="End to end training pipeline">
 
@@ -213,149 +513,7 @@ Speaker note: Inner loop on **u**: many Hamiltonian-ascent steps with no graph t
 
 ---
 
-## 1.5. Almgren–Chriss reproduction example
 
-**State**
-
-$$
-z = (q, S, X) \qquad
-\dot z = f(z,u), \qquad
-f(z,u) = \begin{pmatrix} -u \\ -\kappa u \\ Su - \eta\,|u|^\gamma \end{pmatrix}
-$$
-
-$q$ is inventory, $S$ is the mid-price, $X$ generated cash and $u$ the **control** liquidation rate.
-
-**Objective**
-
-<div class="objective-math">
-
-$$
-J(u)
-=
-\overbrace{\int_0^T \frac{\sigma^2}{2}\, q(t)^2 \, dt}^{\,L}
-+
-\overbrace{\alpha\, q(T)^2}^{\,G(T)}
--
-\bigl(X(T)-X_0\bigr).
-$$
-
-</div>
-
-Inventory-risk running cost $\frac{\sigma^2}{2} q^2$, terminal liquidation penalty $\alpha q(T)^2$ and **cash bookkeeping** via $\mathrm{d}X$.
-
-<div class="equiv-box">
-
-<div class="equiv-box__title">Equivalently</div>
-
-$$
-\mathrm{d}q = -u\,\mathrm{d}t,\qquad
-\mathrm{d}S = -\kappa u\,\mathrm{d}t,\qquad
-\mathrm{d}X = \bigl(Su - \eta\,|u|^\gamma\bigr)\,\mathrm{d}t
-$$
-
-</div>
-
-<!--
-This is the canonical optimal execution model with temporary price impact and liquidation costs. The benchmark is attractive because a deterministic boundary-value or PDE solution can be compared against the learned feedback without ambiguity about the “truth.”
--->
-
----
-
-## 1.6. Contractivity condition violated - $\nabla_{uu}^2\mathcal H$ picks up $p$
-
-<br>
-
-Recall the contractivity condition
-<br>
-
-$$
-\Gamma_c := \left\|\frac{\partial T_\theta}{\partial u}\right\| = \left\|I + \alpha\,\nabla^2_{uu}\mathcal{H}\right\| < 1
-$$
-
-
-but here we have 
-
-$$
-\nabla_{uu}^2\mathcal{H}= - \nabla_{uu}^2 L - \nabla_{uu}^2 f = - p_X \eta \gamma (\gamma - 1) u^{\gamma - 2}
-$$
-
-If the whole thing is positive and $p_X = -1$, we cannot have convergence.
-
-
-
----
-
-## 1.7. Reduced formulation and empirical outcome
-
-**OC state**
-
-$$
-z=(q,S)
-$$
-
-$$
-\begin{aligned}
-J(u)
-&= \int_0^T \frac{\sigma^2}{2}\, q(t)^2 \, dt + \alpha\, q(T)^2 - \bigl(X(T)-X_0\bigr) \\
-&= \int_0^T \frac{\sigma^2}{2}\, q(t)^2 \, dt + \alpha\, q(T)^2 - \int_0^T \dot X(t)\, dt,
-   && \text{since } X(T)-X_0 = \int_0^T \dot X \, dt \\
-&= \int_0^T \Bigl( \tfrac{\sigma^2}{2}\, q(t)^2 - S(t)\, u(t) + \eta\,|u(t)|^\gamma \Bigr)\, dt + \alpha\, q(T)^2,
-   && \text{(\S\,1.5)} \quad \dot X = Su - \eta\,|u|^\gamma\text{.}
-\end{aligned}
-$$
-
-Running cost $=$ reduced $L'$; no $X$ in the OC state.
-
-$$
-\phi_\theta(t,q,S,X)=X+\widetilde{\phi}_\theta(t,q,S),\qquad \partial_X\phi_\theta=1.
-$$
-
-$\gamma$, $\nabla_{uu}^2\mathcal{H}$ (smooth $\psi_\gamma(u)=(u^2+\varepsilon)^{\gamma/2}$)
-
-<!-- $$
-\text{Augmented (§\,1.6)}\quad
-\bigl[\nabla_{uu}^2\mathcal{H}\bigr]_{ij}=\delta_{ij}\,\bigl(-p_X\,\eta_i\,\psi_\gamma''(u_i)\bigr),
-\qquad
-\text{Reduced §\,1.7, }\gamma=2\text{}\quad \mathrm{diag}(2\eta_i).
-$$ -->
-
-<!--
-Speaker: $X(T)-X_0=\int \dot X$ absorbs cash into $L'$; decomposition $\phi=X+\tilde\phi$ fixes $\partial_X\phi=1$. Hessian recap §1.6 vs §1.7.
--->
-
----
-
-## 1.9. Stochastic extension (outlook)
-
-$$
-dZ_t = f(t, Z_t, u_t)\,dt + \sigma(t, Z_t, u_t)\,dW_t.
-$$
-
-$$
-\partial_t \phi_\theta + \max_u \left[
-L + \nabla_z \phi_\theta^\top f + \tfrac{1}{2}\operatorname{Tr}\bigl(\sigma \sigma^\top \nabla_{zz}^2 \phi_\theta\bigr)
-\right] = 0.
-$$
-
-- If $\sigma$ **does not** depend on $u$: fixed-point **form** for $u^*$ often **unchanged**, but $\phi_\theta$ must capture **diffusion**
-- If $\sigma$ **depends** on $u$: the **algebraic** fixed-point for $u^*$ **changes**
-- **Open angles:** Hessian / trace estimation, MC rollouts, contractivity of the stochastic Hamiltonian map
-
-<!--
-This is the forward-looking slide: stochastic HJB adds a trace term involving the Hessian of $\phi_\theta$. For neural $\phi_\theta$, that raises questions of variance and stability. Control-dependent diffusion couples into the implicit first-order condition for u, altering T_theta. Research questions include efficient JVP/HVP schemes, sample-based pathwise losses, and whether the inner map remains well-posed / contractive after discretization.
--->
-
----
-
-## 1.10. Takeaways
-
-1. **JFB** trains with **implicit** Hamiltonians **without** unrolling the inner fixed-point solver in the autodiff tape
-2. **Almgren–Chriss** required exploiting **$\phi_\theta = X + \widetilde{\phi}_\theta$** so $X$ is not learned as a redundant coordinate
-3. **Stochastic** models add **diffusion**, **Monte Carlo** rollouts, and—when $\sigma$ depends on $u$—**new** implicit structure in the control equation
-
-<!--
-Close by tying back to the opening pipeline: implicit u_theta^* from grad_u H = 0, differentiated via JFB, integrated along z_x(t). The benchmark story shows that physics/bookkeeping structure matters as much as the implicit-differentiation trick. The stochastic slide frames honest next steps rather than finished work. Section 2 (merged `slides-part2-rl.md`) covers the RL / stochastic-control extension in more detail.
--->
 
 ---
 src: ./slides-part2-rl.md

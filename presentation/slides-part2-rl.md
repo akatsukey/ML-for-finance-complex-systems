@@ -1,11 +1,12 @@
 ---
-title: "Part II — Reinforcement learning extension"
+
+## title: "Part II — Reinforcement learning extension"
 theme: default
 class: text-left
 highlighter: shiki
 transition: fade
 mdc: true
----
+marp: true
 
 # 2.1. Part II — Reinforcement learning extension
 
@@ -42,7 +43,7 @@ with the one-step transition map
 
 $$
 F(t,z,u) =
-z+\Delta t\, f(t,z,u)+O(\Delta t^2).
+z+\Delta t f(t,z,u)+O(\Delta t^2).
 $$
 
 The empirical RL setting gives access to samples
@@ -62,7 +63,7 @@ For one initial condition $x$, the discretized objective is
 $$
 J_x(\theta) =
 \sum_{k=0}^{N-1}
-L(t_k,z_k,u^\star_{\theta,k})\,\Delta t
+L(t_k,z_k,u^\star_{\theta,k})\Delta t
 +
 G(z_N).
 $$
@@ -104,8 +105,7 @@ These replace the missing analytical derivatives of the dynamics.
 
 Around the reference trajectory, perturb the controls:
 
-$$ u^{(i)}_{0:N-1} = \bar u_{0:N-1} + \delta u^{(i)}, \qquad \delta u^{(i)}\sim \mathcal N(0,\sigma^2 I).$$
-
+$$ u^{(i)}*{0:N-1} = \bar u*{0:N-1} + \delta u^{(i)}, \qquad \delta u^{(i)}\sim \mathcal N(0,\sigma^2 I).$$
 
 The first-order expansion gives
 
@@ -128,9 +128,9 @@ $$
 Estimate $A_k,B_k$ by least squares:
 
 $$
-(A_k,B_k)= \arg\min_{A,B} \sum_{i=1}^M \left\| A^\top \Delta z^{(i)}_k + B^\top \Delta u^{(i)}_k -
-\Delta z^{(i)}_{k+1}
-\right\|^2.
+(A_k,B_k)= \arg\min_{A,B} \sum_{i=1}^M \left A^\top \Delta z^{(i)}_k + B^\top \Delta u^{(i)}*k -
+\Delta z^{(i)}*{k+1}
+\right^2.
 $$
 
 ---
@@ -144,8 +144,8 @@ Use the augmented regressor
 $$
 \zeta_t^{(k)} =
 \begin{bmatrix}
-x_t^{(k)}\\
-u_t^{(k)}\\
+x_t^{(k)}
+u_t^{(k)}
 1
 \end{bmatrix},
 $$
@@ -281,7 +281,7 @@ $$
 p_k =
 A_k^\top p_{k+1}
 +
-\Delta t\,\nabla_z L(t_k,\bar z_k,\bar u_k),
+\Delta t\nabla_z L(t_k,\bar z_k,\bar u_k),
 \qquad
 k=N-1,\dots,0.
 $$
@@ -294,7 +294,7 @@ A_k^\top p_{k+1} =
 $$
 
 $$
-\Delta t\,\nabla_z L =
+\Delta t\nabla_z L =
 \text{instantaneous state-cost sensitivity}.
 $$
 
@@ -315,15 +315,17 @@ $$
 \widehat p_k =
 A_k^\top \widehat p_{k+1}
 +
-\Delta t\,\nabla_z L(t_k,\bar z_k,\bar u_k).
+\Delta t\nabla_z L(t_k,\bar z_k,\bar u_k).
 $$
 
 So:
 
-| Role | Costate used |
-|---|---|
-| Compute implicit control | $\nabla_z\phi_\theta(t_k,z_k)$ |
+
+| Role                      | Costate used                                   |
+| ------------------------- | ---------------------------------------------- |
+| Compute implicit control  | $\nabla_z\phi_\theta(t_k,z_k)$                 |
 | Compute descent direction | $\widehat p_k$ from backward adjoint recursion |
+
 
 ---
 
@@ -407,32 +409,32 @@ $$
 x\sim \rho.
 $$
 
-2. Forward rollout in the environment:
+1. Forward rollout in the environment:
 
 $$
 z_{k+1}=F(t_k,z_k,u_k).
 $$
 
-3. Compute controls by the implicit fixed point:
+1. Compute controls by the implicit fixed point:
 
 $$
 u_k =
 \widehat T_{\theta,k}(u_k;z_k).
 $$
 
-4. Update Jacobian estimates:
+1. Update Jacobian estimates:
 
 $$
 A_k,\ B_k.
 $$
 
-5. Backward adjoint pass:
+1. Backward adjoint pass:
 
 $$
-p_k=A_k^\top p_{k+1}+\Delta t\,\nabla_z L.
+p_k=A_k^\top p_{k+1}+\Delta t\nabla_z L.
 $$
 
-6. JFB update:
+1. JFB update:
 
 $$
 \theta
@@ -448,11 +450,13 @@ $$
 
 The estimated gradient differs from the true gradient through three terms:
 
-| Error source | Where it enters |
-|---|---|
-| $A_k-\nabla_z F_k$ | backward adjoint recursion |
+
+| Error source       | Where it enters                      |
+| ------------------ | ------------------------------------ |
+| $A_k-\nabla_z F_k$ | backward adjoint recursion           |
 | $B_k-\nabla_u F_k$ | Hamiltonian gradient and JFB bracket |
-| JFB approximation | replaces full implicit derivative |
+| JFB approximation  | replaces full implicit derivative    |
+
 
 Full derivative:
 
@@ -471,7 +475,6 @@ $$
 
 ---
 
-
 ## 2.16. Van der Pol oscillator — control problem
 
 ### Goal
@@ -487,15 +490,15 @@ The state is
 $$
 z(t)=
 \begin{pmatrix}
-x_1(t)\\
+x_1(t)
 x_2(t)
 \end{pmatrix},
 $$
 
 where:
 
-- $x_1$ = position-like variable  
-- $x_2$ = velocity-like variable  
+- $x_1$ = position-like variable
+- $x_2$ = velocity-like variable
 
 ### Dynamics
 
@@ -519,7 +522,6 @@ u(t)\in\mathbb R
 $$
 
 It is a scalar control input chosen at each time step to counteract the natural oscillations and steer the system to the origin.
-
 
 ---
 
@@ -546,8 +548,8 @@ $$
 \dot W = rW + \pi(\mu-r)W.
 $$
 
-- $\mu$ = drift of the risky asset  
-- $r$ = risk-free rate  
+- $\mu$ = drift of the risky asset
+- $r$ = risk-free rate
 - both are treated as **unknown** in the RL setting
 
 ### Running and terminal costs
@@ -555,7 +557,7 @@ $$
 We minimize
 
 $$
-\int_0^T L(t,W,\pi)\,dt + G(W_T),
+\int_0^T L(t,W,\pi)dt + G(W_T),
 $$
 
 with
@@ -575,7 +577,7 @@ So the agent seeks high terminal wealth while penalizing overly aggressive posit
 Runs from `examples-RL/vanderpol_comparison.py` / `VanDerPolOC_RL`  
 oracle vs JFB–RL / RLS-style training.
 
-<img src="/images/rl/vanderpol_oracle_vs_rls.png" alt="Van der Pol: oracle vs RL comparison" class="mx-auto block max-h-80 object-contain" />
+
 
 ---
 
@@ -584,17 +586,17 @@ oracle vs JFB–RL / RLS-style training.
 Artifacts from `examples-RL/portfolio_optimization_RL.py` and `PortfolioOC_RL` results  
 same run tag: `JFB-RL_RLS_20260515_180609`.
 
-<div class="grid grid-cols-2 gap-4 items-start">
 
-<img src="/images/rl/portfolio_loss_curve.png" alt="Portfolio RL training loss" class="w-full max-h-56 object-contain mx-auto" />
 
-<img src="/images/rl/portfolio_policy_rollout.png" alt="Portfolio learned policy rollout" class="w-full max-h-56 object-contain mx-auto" />
 
-</div>
 
-**Mid-training rollout** epoch step `0200`:
 
-<img src="/images/rl/portfolio_rollout_training_epoch200.png" alt="Portfolio rollout during training" class="mx-auto block max-h-48 object-contain" />
+
+
+
+**Mid-training rollout** epoch step `0100`:
+
+
 
 ---
 
@@ -609,7 +611,7 @@ same run tag: `JFB-RL_RLS_20260515_180609`.
 Diagnostics:
 
 $$
-\|z_{k+1}-\widehat F_k(z_k,u_k)\|,
+z_{k+1}-\widehat F_k(z_k,u_k),
 $$
 
 $$
@@ -648,3 +650,4 @@ Next steps:
 - stochastic dynamics and second-order HJB terms;
 - stronger proof of descent under simultaneous JFB and Jacobian-estimation error;
 - multi-asset portfolio benchmarks.
+

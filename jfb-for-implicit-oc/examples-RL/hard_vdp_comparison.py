@@ -352,7 +352,7 @@ hist_jfb_rls = train_jfb_variant(
     n_epochs=N_EPOCHS,
     exploration_std0=EXPLORE_STD,
     exploration_decay=EXPLORE_DECAY,
-    ckpt_prefix=None,
+    ckpt_prefix="hard_jfb_rl_rls",
 )
 
 # =======================================================================

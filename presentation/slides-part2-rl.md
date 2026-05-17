@@ -37,7 +37,7 @@ Where we define a function $F$ that takes $(t_k,z_k,u_k)$ and returns the next s
 
 ---
 
-## 2.3. Discrete objective
+## 2.2. Discrete objective
 
 For one initial condition $x$, the discretized training objective is
 
@@ -60,7 +60,7 @@ $$
 
 ---
 
-## 2.4. Local Jacobian estimation: target
+## 2.3. Local Jacobian estimation: target
 
 At each training iteration, we roll out the current implicit policy and obtain
 
@@ -93,7 +93,7 @@ with $A_t = \nabla_z f_t$, $B_t = \nabla_u f_t$, and the "1" absorbing the affin
 
 ---
 
-## 2.5. Off-trajectory / RLS Jacobian estimation
+## 2.4. Off-trajectory / RLS Jacobian estimation
 
 RLS thus estimates the local **Jacobians of the dynamics** directly from rollouts:
 
@@ -118,7 +118,7 @@ $$
 - Works best when successive rollouts remain locally informative.
 ---
 
-## 2.6. Local linear transition model
+## 2.5. Local linear transition model
 
 This estimation method produces a local model
 
@@ -152,7 +152,7 @@ $$
 
 ---
 
-## 2.7. Estimated Hamiltonian
+## 2.6. Estimated Hamiltonian
 
 Define the estimated continuous-time vector field
 
@@ -199,7 +199,7 @@ $$
 ---
 
 
-## 2.9. JFB gradient with estimated dynamics
+## 2.7. JFB gradient with estimated dynamics
 
 The exact gradient has the structure
 
@@ -229,7 +229,7 @@ I-\frac{\partial T_\theta}{\partial u}
 \text{ expensive}.
 $$
 When we discretize and apply JFB ($\frac{d u^\star_\theta}{d\theta}
-\quad \leadsto \quad
+\leadsto
 \frac{\partial \widehat T_{\theta,k}}{\partial\theta}$), our gradient becomes:
 
 <div class="important-box">
@@ -253,45 +253,7 @@ $$
 
 ---
 
-## 2.10. Gradient actually used
-
-We replace
-
-$$
-\nabla_u f
-\quad \leadsto \quad
-B_k,
-$$
-
-and apply JFB:
-
-$$
-\frac{d u^\star_\theta}{d\theta}
-\quad \leadsto \quad
-\frac{\partial \widehat T_{\theta,k}}{\partial\theta}.
-$$
-
-Therefore the estimated JFB descent direction is
-
-$$
-\widehat{\frac{dJ_x}{d\theta}} =
-\sum_{k=0}^{N-1}
-\left(
-\frac{\partial \widehat T_{\theta,k}}{\partial\theta}
-\right)^\top
-\left[
-\nabla_u L(t_k,\bar z_k,u^\star_{\theta,k})
-+
-B_k^\top \widehat p_{k+1}
-\right]
-\Delta t.
-$$
-
-This is the central training formula of the RL extension.
-
----
-
-## 2.11. Algorithmic summary
+## 2.8. Algorithmic summary
 
 <pre v-pre class="algo-box"><code><span class="algo-line-muted"><span class="algo-ln"> 1:</span>  <span class="algo-kw">Initialize</span> networks with parameters <span class="algo-math">θ</span>, RLS estimates <span class="algo-math">{F_k, Q_k}</span></span>
 <span class="algo-line-muted"><span class="algo-ln"> 2:</span>  <span class="algo-kw">for</span> iteration = 1, 2, … <span class="algo-kw">do</span></span>
@@ -310,7 +272,7 @@ This is the central training formula of the RL extension.
 
 ---
 
-## 2.12. Van der Pol oscillator — control problem
+## 2.9. Van der Pol oscillator — control problem
 
 **Goal.** Learn a feedback control that stabilizes a nonlinear oscillator and drives the state to $z_{\text{target}} = (0,0)$.
 
@@ -321,14 +283,20 @@ This is the central training formula of the RL extension.
 $$
 \dot x_1 = x_2,
 \qquad
-\dot x_2 = \underbrace{\mu(1-x_1^2)x_2 - x_1}_{\text{natural nonlinear dynamics}} + \underbrace{u}_{\text{external force}}.
+\dot x_2 = \underbrace{(1-x_1^2)x_2 - x_1}_{\text{natural nonlinear dynamics}} + \underbrace{u}_{\text{external force}}.
 $$
 
-**Control.** $u(t)\in\mathbb R$ — a scalar input chosen at each time step to counteract the oscillations and steer the system to the origin.
+**Three variants.** Same VdP backbone, increasing difficulty for JFB-RL:
+
+|                  | Standard VdP                  | Hard VdP                                 | Hard-Gain VdP                                    |
+|------------------|-------------------------------|------------------------------------------|--------------------------------------------------|
+| Control penalty  | $\tfrac{1}{2} u^2$            | $\lambda_u(e^{u^2}-1)$                   | $\lambda_u(e^{u^2}-1)$                           |
+| Control coupling | $\dot x_2 \mathrel{+}= u$     | $\dot x_2 \mathrel{+}= u$                | $\dot x_2 \mathrel{+}= (1 + \beta\tanh x_1)\, u$ |
+| $B_k = \partial_u f$ | constant                  | constant                                 | **state-dependent**                              |
 
 ---
 
-## 2.13. Portfolio optimal control — control problem
+## 2.10. Portfolio optimal control — control problem
 
 **Goal.** Learn an investment policy that allocates wealth $W_t \in \mathbb R$ to a risky asset, balancing **wealth growth** against a **risk/concentration penalty**.
 
@@ -354,19 +322,80 @@ The agent seeks high terminal wealth while penalizing aggressive positions.
 
 ---
 
-## 2.14. Van der Pol — learned control vs Oracle (RL)
+## 2.11. Van der Pol — learned control vs Oracle (RL)
 
-Runs from `examples-RL/vanderpol_comparison.py` / `VanDerPolOC_RL`  
-oracle vs JFB–RL / RLS-style training.
-
-<img src="/images/rl/vanderpol_oracle_vs_rls.png" alt="Van der Pol: oracle vs RL comparison" class="mx-auto block max-h-80 object-contain" />
+<div class="absolute inset-0 flex items-center justify-center p-4">
+  <img
+    src="/images/rl/vanderpol_oracle_vs_rls.png"
+    class="max-w-full max-h-full object-contain"
+  />
+</div>
 
 ---
 
-## 2.15. Portfolio OC — RL training (JFB–RL / RLS)
+## 2.11. Van der Pol — learning dynamics (RL)
 
-Artifacts from `examples-RL/portfolio_optimization_RL.py` and `PortfolioOC_RL` results  
-same run tag: `JFB-RL_RLS_20260515_180609`.
+
+<div class="absolute inset-0 flex items-center justify-center p-4">
+  <img
+    src="/images/rl/vanderpol_rl_learning_style.gif"
+    class="max-w-full max-h-full object-contain"
+  />
+</div>
+
+
+---
+
+## 2.12. Hard Van der Pol — learned control vs Oracle (RL)
+
+<div class="absolute inset-0 flex items-center justify-center p-4">
+  <img
+    src="/images/rl/hard_comparison_oracle_vs_rls.png"
+    class="max-w-full max-h-full object-contain"
+  />
+</div>
+
+---
+
+## 2.12. Hard Van der Pol — learning dynamics (RL)
+
+
+<div class="absolute inset-0 flex items-center justify-center p-4">
+  <img
+    src="/images/rl/hardvanderpol_rl_learning_style.gif"
+    class="max-w-full max-h-full object-contain"
+  />
+</div>
+
+
+---
+
+## 2.13. Hard Gain Van der Pol — learned control vs Oracle (RL)
+
+<div class="absolute inset-0 flex items-center justify-center p-4">
+  <img
+    src="/images/rl/hardg_comparison_oracle_vs_rls.png"
+    class="max-w-full max-h-full object-contain"
+  />
+</div>
+
+---
+
+## 2.13. Hard Gain Van der Pol — learning dynamics (RL)
+
+
+<div class="absolute inset-0 flex items-center justify-center p-4">
+  <img
+    src="/images/rl/hardgvanderpol_rl_learning_style.gif"
+    class="max-w-full max-h-full object-contain"
+  />
+</div>
+
+
+---
+
+## 2.14. Portfolio OC — RL training (JFB–RL / RLS)
+
 
 <div class="grid grid-cols-2 gap-4 items-start">
 
@@ -376,13 +405,13 @@ same run tag: `JFB-RL_RLS_20260515_180609`.
 
 </div>
 
-**Mid-training rollout** epoch step `0200`:
+**Mid-training rollout** epoch step:
 
 <img src="/images/rl/portfolio_rollout_training_epoch200.png" alt="Portfolio rollout during training" class="mx-auto block max-h-48 object-contain" />
 
 ---
 
-## 2.16. Practical challenges
+## 2.15. Practical challenges
 
 - **Locality of RLS:** old rollouts may be misleading if they are far from the current trajectory.
 - **Jacobian warm-up:** early $A_k,B_k$ estimates may be noisy.
@@ -404,7 +433,7 @@ and fixed-point residuals.
 
 ---
 
-## 2.17. Outlook
+## 2.16. Outlook
 
 The extension keeps the Gelphman structure:
 

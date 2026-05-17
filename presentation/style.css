@@ -64,6 +64,29 @@
   padding: 2rem 2.5rem;
 }
 
+/* Continuous slide index (global-bottom.vue) — part 1 then part 2 */
+.deck-slide-number {
+  position: fixed;
+  top: 0.7rem;
+  right: 1.15rem;
+  z-index: 200;
+  font-size: 0.72rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  color: rgba(100, 116, 139, 0.45);
+  pointer-events: none;
+  user-select: none;
+  line-height: 1;
+}
+
+.print-slide-container .deck-slide-number {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.9rem;
+  z-index: 20;
+}
+
 /* Disable flashy transitions globally */
 .slidev-vclick-target {
   transition: opacity 0.15s ease;

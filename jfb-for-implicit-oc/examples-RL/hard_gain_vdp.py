@@ -64,7 +64,7 @@ DEVICE = "cpu"
 SEED   = 1
 
 BATCH      = 32      # training batch size
-N_EPOCHS   = 50     # epochs per method
+N_EPOCHS   = 200     # epochs per method
 LR         = 3e-3    # Adam learning rate for both methods
 GRAD_CLIP  = 1.0     # gradient norm clip (applied to both)
 
@@ -88,7 +88,7 @@ WARMUP_DECAY  = 0.6
 
 # Smoothing for loss curves in the plot
 SMOOTH_WIN = 15       # moving-average window (epochs)
-SAVE_EVERY = 10**9
+SAVE_EVERY = 25
 
 torch.manual_seed(SEED)
 np.random.seed(SEED)
@@ -196,7 +196,7 @@ env = AnalyticalEnvironment(
     device=DEVICE,
 )
 
-out_dir = os.path.join(_ROOT, "results", "HardGainVanDerPolOC_RL", f"seed_{SEED}")
+out_dir = os.path.join(_ROOT, "results", "HardGainVanDerPolOC_RL")
 ckpt_dir = os.path.join(out_dir, "checkpoints")
 os.makedirs(ckpt_dir, exist_ok=True)
 
@@ -354,7 +354,7 @@ hist_jfb_rls = train_jfb_variant(
     n_epochs=N_EPOCHS,
     exploration_std0=EXPLORE_STD,
     exploration_decay=EXPLORE_DECAY,
-    ckpt_prefix=None,
+    ckpt_prefix="hardg_jfb_rl_rls",
 )
 
 # =======================================================================
@@ -405,9 +405,9 @@ print("-" * 60)
 # Save checkpoints
 # ===========================================================================
 
-torch.save(inn_rls.state_dict(),     os.path.join(ckpt_dir, "hard_jfb_rl_rls.pth"))
-torch.save(inn_oracle.state_dict(),  os.path.join(ckpt_dir, "hard_jfb_rl_oracle.pth"))
-torch.save(mlp.state_dict(),         os.path.join(ckpt_dir, "hard_autodiff.pth"))
+torch.save(inn_rls.state_dict(),     os.path.join(ckpt_dir, "hardg_jfb_rl_rls.pth"))
+torch.save(inn_oracle.state_dict(),  os.path.join(ckpt_dir, "hardg_jfb_rl_oracle.pth"))
+torch.save(mlp.state_dict(),         os.path.join(ckpt_dir, "hardg_autodiff.pth"))
 print(f"Checkpoints saved to {ckpt_dir}")
 
 # ===========================================================================

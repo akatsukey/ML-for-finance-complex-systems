@@ -29,7 +29,7 @@ from core.ImplicitNets import Phi
 from core_RL.Environment import AnalyticalEnvironment
 from core_RL.ImplicitNets_RL import ImplicitNetOC_RL
 from core_RL.JacobianEstimator import RLSJacobianEstimator
-from models.Hard_VDP_RL import HardVanDerPolOC_RL
+from models.Hard_Gain_VDP_RL import HardGainVanDerPolOC_RL
 
 
 # ===========================================================================
@@ -40,13 +40,13 @@ SEED = 123
 
 # Problem config (must match training)
 BATCH = 64
-FP_ALPHA = 0.5
-FP_MAX_ITERS = 30
+FP_ALPHA = 0.05
+FP_MAX_ITERS = 80
 FP_TOL = 1e-4
-U_MIN, U_MAX = -3.0, 3.0
+U_MIN, U_MAX = -2.0, 2.0
 
 # Animation config
-CHECKPOINT_PATTERN = "hard_jfb_rl_rls_epoch_*.pth"
+CHECKPOINT_PATTERN = "hardg_jfb_rl_rls_epoch_*.pth"
 FPS = 20
 PAUSE_FRAMES = 20         # pause after each episode
 TAIL_LENGTH = None        # None = draw full past trajectory, or integer
@@ -56,7 +56,7 @@ WARMUP_DECAY = 0.6
 
 # Save either GIF or not
 SAVE_GIF = True
-GIF_NAME = "hardvanderpol_rl_learning_style.gif"
+GIF_NAME = "hardgvanderpol_rl_learning_style.gif"
 
 torch.manual_seed(SEED)
 np.random.seed(SEED)
@@ -65,7 +65,7 @@ np.random.seed(SEED)
 # ===========================================================================
 # Problem / env
 # ===========================================================================
-prob = HardVanDerPolOC_RL(
+prob = HardGainVanDerPolOC_RL(
     x10_min=1.5, x10_max=2.5,
     x20_min=-0.5, x20_max=0.5,
     batch_size=BATCH,
@@ -214,7 +214,7 @@ def rollout_single(policy, jac_est, z0_single):
 # Load all checkpoint rollouts
 # ===========================================================================
 def build_rollout_database():
-    out_dir = os.path.join(_ROOT, "results", "HardVanDerPolOC_RL", "seed_1")
+    out_dir = os.path.join(_ROOT, "results", "HardGainVanDerPolOC_RL")
     ckpt_dir = os.path.join(out_dir, "checkpoints")
 
     pattern = os.path.join(ckpt_dir, CHECKPOINT_PATTERN)

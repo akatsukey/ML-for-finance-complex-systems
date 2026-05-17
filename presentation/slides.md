@@ -435,7 +435,7 @@ Plots E–F: `/public/images/` → served as `/images/loss-vs-work.png`, `/image
 
 <div id="stochastic-equiv-box" class="equiv-box">
 
-<div class="equiv-box__title">Equivalently</div>
+**Equivalent state**
 
 $$
 \mathrm{d}q = -u\,\mathrm{d}t,\qquad
@@ -444,26 +444,24 @@ $$
 $$
 
 
+**HJB**
+
+<div class="important-box">
+<div class="important-box__label">Important</div>
+
 $$
 \partial_t \phi_\theta + \max_u \left[ L + \nabla_z \phi_\theta^\top f + \tfrac{1}{2}\operatorname{Tr}\bigl(\sigma \sigma^\top \nabla^2_{z} \phi_\theta\bigr) \right] = 0
 $$
 
-
 </div>
 
+</div>
 <div class="stoch-costate-equation">
 
-$$
-\mathrm{d}p_t
-= -\bigl([\partial_z f(t,z^{\star}_t,u^{\star}_t)]^\top p_t + \nabla_z L(t,z^{\star}_t,u^{\star}_t)\bigr)\,\mathrm{d}t
-+ q_t\,\mathrm{d}W_t,
-\qquad
-p(T)=\nabla_z G(z^{\star}_T).
-$$
 
 </div>
 
-$\sigma=\sigma(t,z,u)$ **depends on** $u$ $\Rightarrow$ $\nabla_u \mathcal{H}=0$ equation gains **explicit** diffusion–control coupling
+If $\sigma=\sigma(t,z,u)$ **depends on** $u$ $\Rightarrow$ $\nabla_u \mathcal{H}=0$ equation gains **explicit** diffusion–control coupling
 <!--
 This is the forward-looking slide: stochastic HJB adds a trace term involving the Hessian of $\phi_\theta$. For neural $\phi_\theta$, that raises questions of variance and stability. Control-dependent diffusion couples into the implicit first-order condition for u, altering T_theta. Research questions include efficient JVP/HVP schemes, sample-based pathwise losses, and whether the inner map remains well-posed / contractive after discretization.
 -->
